@@ -129,6 +129,15 @@
             "phase_c_current": {
                 "name": "Corrente fase C"
             },
+            "active_grid_a_current": {
+                "name": "Corrente fase A"
+            },
+            "active_grid_b_current": {
+                "name": "Corrente fase B"
+            },
+            "active_grid_c_current": {
+                "name": "Corrente fase C"
+            },
             "day_active_power_peak": {
                 "name": "Picco di potenza giornaliero"
             },
@@ -164,6 +173,12 @@
             },
             "daily_yield_energy": {
                 "name": "Rendimento giornaliero"
+            },
+            "monthly_yield_energy": {
+                "name": "Monthly yield"
+            },
+            "yearly_yield_energy": {
+                "name": "Yearly yield"
             },
             "hourly_yield_energy": {
                 "name": "Resa oraria"
@@ -486,6 +501,9 @@
             "active_power_control": {
                 "name": "Controllo potenza attiva"
             },
+            "soh_calibration_status": {
+                "name": "Stato calibrazione SOH"
+            },
             "pack_1_max_temperature": {
                 "name": "Pacco 1 temperatura massima"
             },
@@ -507,8 +525,92 @@
             "pack_1_working_status": {
                 "name": "Pacco 1 stato di funzionamento"
             },
+            "pack_2_working_status": {
+                "name": "Pacco 2 stato di funzionamento"
+            },
+            "pack_3_working_status": {
+                "name": "Pacco 3 stato di funzionamento"
+            },
             "pack_1_firmware_version": {
                 "name": "Pacco 1 versione firmware"
+            },
+            "pack_1_serial_number": {
+                "name": "Pacco 1 numero di serie"
+            },
+            "pack_1_state_of_capacity": {
+                "name": "Pacco 1 stato capacità"
+            },
+            "pack_1_charge_discharge_power": {
+                "name": "Pack 1 charge discharge power"
+            },
+            "pack_1_voltage": {
+                "name": "Pack 1 voltage"
+            },
+            "pack_1_current": {
+                "name": "Pack 1 current"
+            },
+            "pack_1_soh_calibration_status": {
+                "name": "Pacco 1 stato calibrazione SOH"
+            },
+            "pack_1_total_charge": {
+                "name": "Pack 1 total charge"
+            },
+            "pack_1_total_discharge": {
+                "name": "Pack 1 total discharge"
+            },
+            "pack_2_firmware_version": {
+                "name": "Pack 2 firmware version"
+            },
+            "pack_2_serial_number": {
+                "name": "Pack 2 serial number"
+            },
+            "pack_2_state_of_capacity": {
+                "name": "Pack 2 state of capacity"
+            },
+            "pack_2_charge_discharge_power": {
+                "name": "Pack 2 charge discharge power"
+            },
+            "pack_2_voltage": {
+                "name": "Pack 2 voltage"
+            },
+            "pack_2_current": {
+                "name": "Pack 2 current"
+            },
+            "pack_2_soh_calibration_status": {
+                "name": "Pack 2 SOH calibration status"
+            },
+            "pack_2_total_charge": {
+                "name": "Pack 2 total charge"
+            },
+            "pack_2_total_discharge": {
+                "name": "Pack 2 total discharge"
+            },
+            "pack_3_firmware_version": {
+                "name": "Pack 3 firmware version"
+            },
+            "pack_3_serial_number": {
+                "name": "Pack 3 serial number"
+            },
+            "pack_3_state_of_capacity": {
+                "name": "Pacco 3 SOC"
+            },
+            "pack_3_charge_discharge_power": {
+                "name": "Pack 3 charge discharge power"
+            },
+            "pack_3_voltage": {
+                "name": "Pack 3 voltage"
+            },
+            "pack_3_current": {
+                "name": "Pack 3 current"
+            },
+            "pack_3_soh_calibration_status": {
+                "name": "Pack 3 SOH calibration status"
+            },
+            "pack_3_total_charge": {
+                "name": "Pack 3 total charge"
+            },
+            "pack_3_total_discharge": {
+                "name": "Pacco 3 scarica totale"
             },
             "bms_temperature": {
                 "name": "Temperatura BMS"
