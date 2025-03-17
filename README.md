@@ -1,3 +1,8 @@
+# This fork:
+
+This fork of teh great Huawei Solar is adding the possibility to setup your own polling intervals for your inverters,. The settings are in the UI, when you configure your network Host / Port, this forks allows you to select your own polling interval.
+Choose some intervals that are working for you setup, as an example in my case with a wired connection to the inverter, I can go as low as 3s for polling with no issue.
+
 # Huawei Solar Integration
 
 [![hacs_badge](https://img.shields.io/badge/HACS-Default-orange.svg)](https://github.com/hacs/integration)
