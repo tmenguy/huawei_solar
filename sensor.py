@@ -1319,7 +1319,7 @@ EMMA_SENSOR_DESCRIPTIONS: tuple[HuaweiSolarSensorEntityDescription, ...] = (
         icon="mdi:home-battery-outline",
         native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
         device_class=SensorDeviceClass.ENERGY_STORAGE,
-        state_class=SensorStateClass.TOTAL_INCREASING,
+        state_class=SensorStateClass.MEASUREMENT,
         entity_registry_enabled_default=False,
     ),
     HuaweiSolarSensorEntityDescription(
@@ -1664,7 +1664,7 @@ class HuaweiSolarTOUPricePeriodsSensorEntity(
             self._attr_native_value = len(data)
 
             if len(data) == 0:
-                self._attr_extra_state_attributes.clear()
+                self._attr_extra_state_attributes = {}
             elif isinstance(data[0], LG_RESU_TimeOfUsePeriod):
                 self._attr_extra_state_attributes = {
                     f"Period {idx + 1}": self._lg_resu_period_to_text(
@@ -1692,8 +1692,6 @@ class HuaweiSolarCapacityControlPeriodsSensorEntity(
     It shows the number of configured capacity control periods, and has the
     contents of them as extended attributes
     """
-
-    _attr_extra_state_attributes: dict[str, Any] = {}
 
     def __init__(
         self,
@@ -1744,7 +1742,7 @@ class HuaweiSolarCapacityControlPeriodsSensorEntity(
         else:
             self._attr_available = False
             self._attr_native_value = None
-            self._attr_extra_state_attributes.clear()
+            self._attr_extra_state_attributes = {}
 
         self.async_write_ha_state()
 
@@ -1753,8 +1751,6 @@ class HuaweiSolarForcibleChargeEntity(
     CoordinatorEntity, HuaweiSolarEntity, SensorEntity
 ):
     """Huawei Solar Sensor for the current forcible charge status."""
-
-    _attr_extra_state_attributes: dict[str, Any] = {}
 
     REGISTER_NAMES = [
         rn.STORAGE_FORCIBLE_CHARGE_DISCHARGE_SETTING_MODE,  # is SoC or time the target?
@@ -1839,7 +1835,7 @@ class HuaweiSolarForcibleChargeEntity(
         else:
             self._attr_available = False
             self._attr_native_value = None
-            self._attr_extra_state_attributes.clear()
+            self._attr_extra_state_attributes = {}
         self.async_write_ha_state()
 
 
@@ -1919,7 +1915,7 @@ class HuaweiSolarActivePowerControlModeEntity(
         else:
             self._attr_available = False
             self._attr_native_value = None
-            self._attr_extra_state_attributes.clear()
+            self._attr_extra_state_attributes = {}
         self.async_write_ha_state()
 
 
