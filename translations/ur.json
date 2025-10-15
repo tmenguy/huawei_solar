@@ -90,9 +90,6 @@
             },
             "emma_maximum_feed_grid_power_watt": {
                 "name": "Maximum feed grid power"
-            }, 
-            "mppt_scanning_interval":{
-                "name": "MPPT scan interval"
             }
         },
         "sensor": {
@@ -132,6 +129,15 @@
             "phase_c_current": {
                 "name": "فیز سی کرنٹ"
             },
+            "active_grid_a_current": {
+                "name": "فیز اے کرنٹ"
+            },
+            "active_grid_b_current": {
+                "name": "فیز بی کرنٹ"
+            },
+            "active_grid_c_current": {
+                "name": "فیز سی کرنٹ"
+            },
             "day_active_power_peak": {
                 "name": "دن کی فعال طاقت کی چوٹی"
             },
@@ -167,6 +173,12 @@
             },
             "daily_yield_energy": {
                 "name": "روزانہ کی پیداوار"
+            },
+            "monthly_yield_energy": {
+                "name": "Monthly yield"
+            },
+            "yearly_yield_energy": {
+                "name": "Yearly yield"
             },
             "hourly_yield_energy": {
                 "name": "Hourly yield"
@@ -489,6 +501,9 @@
             "active_power_control": {
                 "name": "Active power control"
             },
+            "soh_calibration_status": {
+                "name": "SOH calibration status"
+            },
             "pack_1_max_temperature": {
                 "name": "Pack 1 max temperature"
             },
@@ -510,8 +525,92 @@
             "pack_1_working_status": {
                 "name": "Pack 1 working status"
             },
+            "pack_2_working_status": {
+                "name": "Pack 2 working status"
+            },
+            "pack_3_working_status": {
+                "name": "Pack 3 working status"
+            },
             "pack_1_firmware_version": {
                 "name": "Pack 1 firmware version"
+            },
+            "pack_1_serial_number": {
+                "name": "Pack 1 serial number"
+            },
+            "pack_1_state_of_capacity": {
+                "name": "Pack 1 state of capacity"
+            },
+            "pack_1_charge_discharge_power": {
+                "name": "Pack 1 charge discharge power"
+            },
+            "pack_1_voltage": {
+                "name": "Pack 1 voltage"
+            },
+            "pack_1_current": {
+                "name": "Pack 1 current"
+            },
+            "pack_1_soh_calibration_status": {
+                "name": "Pack 1 SOH calibration status"
+            },
+            "pack_1_total_charge": {
+                "name": "Pack 1 total charge"
+            },
+            "pack_1_total_discharge": {
+                "name": "Pack 1 total discharge"
+            },
+            "pack_2_firmware_version": {
+                "name": "Pack 2 firmware version"
+            },
+            "pack_2_serial_number": {
+                "name": "Pack 2 serial number"
+            },
+            "pack_2_state_of_capacity": {
+                "name": "Pack 2 state of capacity"
+            },
+            "pack_2_charge_discharge_power": {
+                "name": "Pack 2 charge discharge power"
+            },
+            "pack_2_voltage": {
+                "name": "Pack 2 voltage"
+            },
+            "pack_2_current": {
+                "name": "Pack 2 current"
+            },
+            "pack_2_soh_calibration_status": {
+                "name": "Pack 2 SOH calibration status"
+            },
+            "pack_2_total_charge": {
+                "name": "Pack 2 total charge"
+            },
+            "pack_2_total_discharge": {
+                "name": "Pack 2 total discharge"
+            },
+            "pack_3_firmware_version": {
+                "name": "Pack 3 firmware version"
+            },
+            "pack_3_serial_number": {
+                "name": "Pack 3 serial number"
+            },
+            "pack_3_state_of_capacity": {
+                "name": "Pack 3 state of capacity"
+            },
+            "pack_3_charge_discharge_power": {
+                "name": "Pack 3 charge discharge power"
+            },
+            "pack_3_voltage": {
+                "name": "Pack 3 voltage"
+            },
+            "pack_3_current": {
+                "name": "Pack 3 current"
+            },
+            "pack_3_soh_calibration_status": {
+                "name": "Pack 3 SOH calibration status"
+            },
+            "pack_3_total_charge": {
+                "name": "Pack 3 total charge"
+            },
+            "pack_3_total_discharge": {
+                "name": "Pack 3 total discharge"
             },
             "bms_temperature": {
                 "name": "BMS temperature"
@@ -612,32 +711,113 @@
             "backup_power_state_of_charge": {
                 "name": "Backup power state of charge"
             },
-            "pack_1_max_temperature": {
-                "name": "Pack 1 max temperature"
+            "phase_a_voltage_built_in_energy_sensor": {
+                "name": "Phase A voltage"
             },
-            "pack_1_min_temperature": {
-                "name": "Pack 1 min temperature"
-            }, 
-            "pack_2_max_temperature": {
-                "name": "Pack 2 max temperature"
+            "phase_b_voltage_built_in_energy_sensor": {
+                "name": "Phase B voltage"
             },
-            "pack_2_min_temperature": {
-                "name": "Pack 2 min temperature"
-            }, 
-            "pack_3_max_temperature": {
-                "name": "Pack 3 max temperature"
+            "phase_c_voltage_built_in_energy_sensor": {
+                "name": "Phase C voltage"
             },
-            "pack_3_min_temperature": {
-                "name": "Pack 3 min temperature"
+            "line_voltage_a_b_built_in_energy_sensor": {
+                "name": "A-B line voltage"
             },
-            "pack_1_working_status": {
-                "name": "Pack 1 working status"
-            }, 
-            "pack_1_firmware_version": {
-                "name": "Pack 1 firmware version"
+            "line_voltage_b_c_built_in_energy_sensor": {
+                "name": "B-C line voltage"
             },
-            "bms_temperature": {
-                "name": "BMS temperature"
+            "line_voltage_c_a_built_in_energy_sensor": {
+                "name": "C-A line voltage"
+            },
+            "phase_a_current_built_in_energy_sensor": {
+                "name": "Phase A current"
+            },
+            "phase_b_current_built_in_energy_sensor": {
+                "name": "Phase B current"
+            },
+            "phase_c_current_built_in_energy_sensor": {
+                "name": "Phase C current"
+            },
+            "active_power_built_in_energy_sensor": {
+                "name": "Active power"
+            },
+            "power_factor_built_in_energy_sensor": {
+                "name": "Power factor"
+            },
+            "apparent_power_built_in_energy_sensor": {
+                "name": "Apparent power"
+            },
+            "phase_a_active_power_built_in_energy_sensor": {
+                "name": "Phase A active power"
+            },
+            "phase_b_active_power_built_in_energy_sensor": {
+                "name": "Phase B active power"
+            },
+            "phase_c_active_power_built_in_energy_sensor": {
+                "name": "Phase C active power"
+            },
+            "total_active_energy_built_in_energy_sensor": {
+                "name": "Total active energy"
+            },
+            "total_negative_active_energy_built_in_energy_sensor": {
+                "name": "Total negative active energy"
+            },
+            "total_positive_active_energy_built_in_energy_sensor": {
+                "name": "Total positive active energy"
+            },
+            "phase_a_voltage_external_energy_sensor": {
+                "name": "Phase A voltage"
+            },
+            "phase_b_voltage_external_energy_sensor": {
+                "name": "Phase B voltage"
+            },
+            "phase_c_voltage_external_energy_sensor": {
+                "name": "Phase C voltage"
+            },
+            "line_voltage_a_b_external_energy_sensor": {
+                "name": "A-B line voltage"
+            },
+            "line_voltage_b_c_external_energy_sensor": {
+                "name": "B-C line voltage"
+            },
+            "line_voltage_c_a_external_energy_sensor": {
+                "name": "C-A line voltage"
+            },
+            "phase_a_current_external_energy_sensor": {
+                "name": "Phase A current"
+            },
+            "phase_b_current_external_energy_sensor": {
+                "name": "Phase B current"
+            },
+            "phase_c_current_external_energy_sensor": {
+                "name": "Phase C current"
+            },
+            "active_power_external_energy_sensor": {
+                "name": "Active power"
+            },
+            "power_factor_external_energy_sensor": {
+                "name": "Power factor"
+            },
+            "apparent_power_external_energy_sensor": {
+                "name": "Apparent power"
+            },
+            "phase_a_active_power_external_energy_sensor": {
+                "name": "Phase A active power"
+            },
+            "phase_b_active_power_external_energy_sensor": {
+                "name": "Phase B active power"
+            },
+            "phase_c_active_power_external_energy_sensor": {
+                "name": "Phase C active power"
+            },
+            "total_active_energy_external_energy_sensor": {
+                "name": "Total active energy"
+            },
+            "total_negative_active_energy_external_energy_sensor": {
+                "name": "Total negative active energy"
+            },
+            "total_positive_active_energy_external_energy_sensor": {
+                "name": "Total positive active energy"
             }
         },
         "select": {
@@ -695,9 +875,6 @@
             },
             "startup": {
                 "name": "انورٹر آن/آف"
-            },
-            "mppt_multimodal_scanning": {
-                "name": "MPPT scanning"
             }
         }
     },

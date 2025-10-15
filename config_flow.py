@@ -5,15 +5,6 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from huawei_solar import (
-    ConnectionException,
-    HuaweiSolarException,
-    InvalidCredentials,
-    ReadException,
-    create_rtu_bridge,
-    create_sub_bridge,
-    create_tcp_bridge,
-)
 import serial.tools.list_ports
 import voluptuous as vol
 
@@ -28,13 +19,20 @@ from homeassistant.const import (
 )
 from homeassistant.data_entry_flow import FlowResult
 from homeassistant.helpers import config_validation as cv, selector
-
+from huawei_solar import (
+    ConnectionException,
+    HuaweiSolarException,
+    InvalidCredentials,
+    ReadException,
+    create_rtu_bridge,
+    create_sub_bridge,
+    create_tcp_bridge,
+)
 from .const import (
     CONF_ENABLE_PARAMETER_CONFIGURATION,
     CONF_SLAVE_IDS,
     DEFAULT_PORT,
     DEFAULT_SERIAL_SLAVE_ID,
-    DEFAULT_SLAVE_ID,
     DEFAULT_USERNAME,
     DOMAIN, CONF_INVERTER_UPDATE_INTERVAL, CONF_POWER_METER_UPDATE_INTERVAL, CONF_ENERGY_STORAGE_UPDATE_INTERVAL,
     INVERTER_UPDATE_INTERVAL, POWER_METER_UPDATE_INTERVAL, ENERGY_STORAGE_UPDATE_INTERVAL,
@@ -105,7 +103,7 @@ async def validate_network_setup_auto_slave_discovery(
         )
 
         _LOGGER.info(
-            "Successfully connected to inverter %s with SN %s",
+            "Successfully connected to device %s with SN %s",
             bridge.model_name,
             bridge.serial_number,
         )
@@ -145,7 +143,9 @@ async def validate_network_setup_auto_slave_discovery(
                 )
                 continue
 
-            if device_info.model and device_info.model.startswith("SUN2000"):
+            if device_info.model and device_info.model.startswith(
+                ("SUN2000", "EDF ESS", "Powershifter", "SWI300", "SCharger")
+            ):
                 _LOGGER.info(
                     "Slave %s was auto-discovered of type %s with model %s and software version %s",
                     device_info.device_id,
@@ -160,7 +160,7 @@ async def validate_network_setup_auto_slave_discovery(
                     slave_bridge = await create_sub_bridge(bridge, slave_id)
 
                     _LOGGER.info(
-                        "Successfully connected to slave inverter %s: %s with SN %s",
+                        "Successfully connected to slave %s: %s with SN %s",
                         slave_id,
                         slave_bridge.model_name,
                         slave_bridge.serial_number,
@@ -173,7 +173,7 @@ async def validate_network_setup_auto_slave_discovery(
                     )
             else:
                 _LOGGER.warning(
-                    "Skipping slave %s with model %s. Only SUN2000 inverters are supported as secondary slaves",
+                    "Skipping slave %s with model %s. Only SUN2000 inverters and SChargers are supported as secondary slaves",
                     device_info.device_id,
                     device_info.model,
                 )

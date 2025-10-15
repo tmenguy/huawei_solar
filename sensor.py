@@ -4,22 +4,6 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any, cast
 
-from huawei_solar import (
-    HuaweiEMMABridge,
-    HuaweiSolarBridge,
-    HuaweiSUN2000Bridge,
-    register_names as rn,
-    register_values as rv,
-)
-from huawei_solar.files import OptimizerRunningStatus
-from huawei_solar.registers import (
-    ChargeDischargePeriod,
-    ChargeFlag,
-    HUAWEI_LUNA2000_TimeOfUsePeriod,
-    LG_RESU_TimeOfUsePeriod,
-    PeakSettingPeriod,
-)
-
 from homeassistant.components.sensor import (
     SensorDeviceClass,
     SensorEntity,
@@ -29,6 +13,7 @@ from homeassistant.components.sensor import (
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import (
     PERCENTAGE,
+    UnitOfApparentPower,
     UnitOfElectricCurrent,
     UnitOfElectricPotential,
     UnitOfEnergy,
@@ -42,6 +27,21 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity import DeviceInfo, EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
+from huawei_solar import (
+    HuaweiChargerBridge,
+    HuaweiEMMABridge,
+    HuaweiSolarBridge,
+    HuaweiSUN2000Bridge,
+    register_names as rn,
+    register_values as rv,
+)
+from huawei_solar.files import OptimizerRunningStatus
+from huawei_solar.registers import (
+    ChargeFlag,
+    HUAWEI_LUNA2000_TimeOfUsePeriod,
+    LG_RESU_TimeOfUsePeriod,
+    PeakSettingPeriod,
+)
 
 from . import HuaweiSolarEntity, HuaweiSolarUpdateCoordinators
 from .const import DATA_UPDATE_COORDINATORS, DOMAIN
@@ -260,6 +260,22 @@ INVERTER_SENSOR_DESCRIPTIONS: tuple[HuaweiSolarSensorEntityDescription, ...] = (
         state_class=SensorStateClass.TOTAL_INCREASING,
     ),
     HuaweiSolarSensorEntityDescription(
+        key=rn.MONTHLY_YIELD_ENERGY,
+        icon="mdi:solar-power",
+        native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
+        device_class=SensorDeviceClass.ENERGY,
+        state_class=SensorStateClass.TOTAL_INCREASING,
+        entity_registry_enabled_default=False,
+    ),
+    HuaweiSolarSensorEntityDescription(
+        key=rn.YEARLY_YIELD_ENERGY,
+        icon="mdi:solar-power",
+        native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
+        device_class=SensorDeviceClass.ENERGY,
+        state_class=SensorStateClass.TOTAL_INCREASING,
+        entity_registry_enabled_default=False,
+    ),
+    HuaweiSolarSensorEntityDescription(
         key=rn.STATE_1,
         entity_category=EntityCategory.DIAGNOSTIC,
         value_conversion_function=", ".join,
@@ -419,12 +435,14 @@ SINGLE_PHASE_METER_ENTITY_DESCRIPTIONS: tuple[
     ),
     HuaweiSolarSensorEntityDescription(
         key=rn.GRID_EXPORTED_ENERGY,
+        icon="mdi:transmission-tower-import",
         native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
         device_class=SensorDeviceClass.ENERGY,
         state_class=SensorStateClass.TOTAL_INCREASING,
     ),
     HuaweiSolarSensorEntityDescription(
         key=rn.GRID_ACCUMULATED_ENERGY,
+        icon="mdi:transmission-tower-export",
         native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
         device_class=SensorDeviceClass.ENERGY,
         state_class=SensorStateClass.TOTAL_INCREASING,
@@ -520,12 +538,14 @@ THREE_PHASE_METER_ENTITY_DESCRIPTIONS: tuple[
     ),
     HuaweiSolarSensorEntityDescription(
         key=rn.GRID_EXPORTED_ENERGY,
+        icon="mdi:transmission-tower-import",
         native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
         device_class=SensorDeviceClass.ENERGY,
         state_class=SensorStateClass.TOTAL_INCREASING,
     ),
     HuaweiSolarSensorEntityDescription(
         key=rn.GRID_ACCUMULATED_ENERGY,
+        icon="mdi:transmission-tower-export",
         native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
         device_class=SensorDeviceClass.ENERGY,
         state_class=SensorStateClass.TOTAL_INCREASING,
@@ -785,6 +805,12 @@ BATTERY_TEMPLATE_SENSOR_DESCRIPTIONS: tuple[BatteryTemplateEntityDescription, ..
         device_class=SensorDeviceClass.POWER,
     ),
     BatteryTemplateEntityDescription(
+        battery_1_key=rn.STORAGE_UNIT_SOH_CALIBRATION_STATUS,
+        battery_2_key=None,
+        translation_key="soh_calibration_status",
+        entity_category=EntityCategory.DIAGNOSTIC,
+    ),
+    BatteryTemplateEntityDescription(
         battery_1_key=rn.STORAGE_UNIT_1_BATTERY_PACK_1_MAXIMUM_TEMPERATURE,
         battery_2_key=rn.STORAGE_UNIT_2_BATTERY_PACK_1_MAXIMUM_TEMPERATURE,
         translation_key="pack_1_max_temperature",
@@ -839,10 +865,234 @@ BATTERY_TEMPLATE_SENSOR_DESCRIPTIONS: tuple[BatteryTemplateEntityDescription, ..
         entity_category=EntityCategory.DIAGNOSTIC,
     ),
     BatteryTemplateEntityDescription(
+        battery_1_key=rn.STORAGE_UNIT_1_BATTERY_PACK_2_WORKING_STATUS,
+        battery_2_key=rn.STORAGE_UNIT_2_BATTERY_PACK_2_WORKING_STATUS,
+        translation_key="pack_2_working_status",
+        entity_category=EntityCategory.DIAGNOSTIC,
+    ),
+    BatteryTemplateEntityDescription(
+        battery_1_key=rn.STORAGE_UNIT_1_BATTERY_PACK_3_WORKING_STATUS,
+        battery_2_key=rn.STORAGE_UNIT_2_BATTERY_PACK_3_WORKING_STATUS,
+        translation_key="pack_3_working_status",
+        entity_category=EntityCategory.DIAGNOSTIC,
+    ),
+    BatteryTemplateEntityDescription(
         battery_1_key=rn.STORAGE_UNIT_1_BATTERY_PACK_1_FIRMWARE_VERSION,
         battery_2_key=rn.STORAGE_UNIT_2_BATTERY_PACK_1_FIRMWARE_VERSION,
         translation_key="pack_1_firmware_version",
         entity_category=EntityCategory.DIAGNOSTIC,
+    ),
+    BatteryTemplateEntityDescription(
+        battery_1_key=rn.STORAGE_UNIT_1_BATTERY_PACK_1_SERIAL_NUMBER,
+        battery_2_key=rn.STORAGE_UNIT_2_BATTERY_PACK_1_SERIAL_NUMBER,
+        translation_key="pack_1_serial_number",
+        entity_category=EntityCategory.DIAGNOSTIC,
+    ),
+    BatteryTemplateEntityDescription(
+        battery_1_key=rn.STORAGE_UNIT_1_BATTERY_PACK_1_STATE_OF_CAPACITY,
+        battery_2_key=rn.STORAGE_UNIT_2_BATTERY_PACK_1_STATE_OF_CAPACITY,
+        translation_key="pack_1_state_of_capacity",
+        native_unit_of_measurement=PERCENTAGE,
+        state_class=SensorStateClass.MEASUREMENT,
+    ),
+    BatteryTemplateEntityDescription(
+        battery_1_key=rn.STORAGE_UNIT_1_BATTERY_PACK_1_CHARGE_DISCHARGE_POWER,
+        battery_2_key=rn.STORAGE_UNIT_2_BATTERY_PACK_1_CHARGE_DISCHARGE_POWER,
+        translation_key="pack_1_charge_discharge_power",
+        icon="mdi:home-battery-outline",
+        native_unit_of_measurement=UnitOfPower.WATT,
+        state_class=SensorStateClass.MEASUREMENT,
+        device_class=SensorDeviceClass.POWER,
+    ),
+    BatteryTemplateEntityDescription(
+        battery_1_key=rn.STORAGE_UNIT_1_BATTERY_PACK_1_VOLTAGE,
+        battery_2_key=rn.STORAGE_UNIT_2_BATTERY_PACK_1_VOLTAGE,
+        translation_key="pack_1_voltage",
+        icon="mdi:home-lightning-bolt",
+        native_unit_of_measurement=UnitOfElectricPotential.VOLT,
+        state_class=SensorStateClass.MEASUREMENT,
+        device_class=SensorDeviceClass.VOLTAGE,
+    ),
+    BatteryTemplateEntityDescription(
+        battery_1_key=rn.STORAGE_UNIT_1_BATTERY_PACK_1_CURRENT,
+        battery_2_key=rn.STORAGE_UNIT_2_BATTERY_PACK_1_CURRENT,
+        translation_key="pack_1_current",
+        icon="mdi:home-lightning-bolt-outline",
+        native_unit_of_measurement=UnitOfElectricCurrent.AMPERE,
+        state_class=SensorStateClass.MEASUREMENT,
+        device_class=SensorDeviceClass.CURRENT,
+    ),
+    BatteryTemplateEntityDescription(
+        battery_1_key=rn.STORAGE_UNIT_1_BATTERY_PACK_1_SOH_CALIBRATION_STATUS,
+        battery_2_key=rn.STORAGE_UNIT_2_BATTERY_PACK_1_SOH_CALIBRATION_STATUS,
+        translation_key="pack_1_soh_calibration_status",
+        entity_category=EntityCategory.DIAGNOSTIC,
+    ),
+    BatteryTemplateEntityDescription(
+        battery_1_key=rn.STORAGE_UNIT_1_BATTERY_PACK_1_TOTAL_CHARGE,
+        battery_2_key=rn.STORAGE_UNIT_2_BATTERY_PACK_1_TOTAL_CHARGE,
+        translation_key="pack_1_total_charge",
+        icon="mdi:battery-plus-variant",
+        native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
+        state_class=SensorStateClass.TOTAL_INCREASING,
+        device_class=SensorDeviceClass.ENERGY,
+    ),
+    BatteryTemplateEntityDescription(
+        battery_1_key=rn.STORAGE_UNIT_1_BATTERY_PACK_1_TOTAL_DISCHARGE,
+        battery_2_key=rn.STORAGE_UNIT_2_BATTERY_PACK_1_TOTAL_DISCHARGE,
+        translation_key="pack_1_total_discharge",
+        icon="mdi:battery-minus-variant",
+        native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
+        state_class=SensorStateClass.TOTAL_INCREASING,
+        device_class=SensorDeviceClass.ENERGY,
+    ),
+    # Pack 2 added features
+    BatteryTemplateEntityDescription(
+        battery_1_key=rn.STORAGE_UNIT_1_BATTERY_PACK_2_FIRMWARE_VERSION,
+        battery_2_key=rn.STORAGE_UNIT_2_BATTERY_PACK_2_FIRMWARE_VERSION,
+        translation_key="pack_2_firmware_version",
+        entity_category=EntityCategory.DIAGNOSTIC,
+    ),
+    BatteryTemplateEntityDescription(
+        battery_1_key=rn.STORAGE_UNIT_1_BATTERY_PACK_2_SERIAL_NUMBER,
+        battery_2_key=rn.STORAGE_UNIT_2_BATTERY_PACK_2_SERIAL_NUMBER,
+        translation_key="pack_2_serial_number",
+        entity_category=EntityCategory.DIAGNOSTIC,
+    ),
+    BatteryTemplateEntityDescription(
+        battery_1_key=rn.STORAGE_UNIT_1_BATTERY_PACK_2_STATE_OF_CAPACITY,
+        battery_2_key=rn.STORAGE_UNIT_2_BATTERY_PACK_2_STATE_OF_CAPACITY,
+        translation_key="pack_2_state_of_capacity",
+        native_unit_of_measurement=PERCENTAGE,
+        state_class=SensorStateClass.MEASUREMENT,
+    ),
+    BatteryTemplateEntityDescription(
+        battery_1_key=rn.STORAGE_UNIT_1_BATTERY_PACK_2_CHARGE_DISCHARGE_POWER,
+        battery_2_key=rn.STORAGE_UNIT_2_BATTERY_PACK_2_CHARGE_DISCHARGE_POWER,
+        translation_key="pack_2_charge_discharge_power",
+        icon="mdi:home-battery-outline",
+        native_unit_of_measurement=UnitOfPower.WATT,
+        state_class=SensorStateClass.MEASUREMENT,
+        device_class=SensorDeviceClass.POWER,
+    ),
+    BatteryTemplateEntityDescription(
+        battery_1_key=rn.STORAGE_UNIT_1_BATTERY_PACK_2_VOLTAGE,
+        battery_2_key=rn.STORAGE_UNIT_2_BATTERY_PACK_2_VOLTAGE,
+        translation_key="pack_2_voltage",
+        icon="mdi:home-lightning-bolt",
+        native_unit_of_measurement=UnitOfElectricPotential.VOLT,
+        state_class=SensorStateClass.MEASUREMENT,
+        device_class=SensorDeviceClass.VOLTAGE,
+    ),
+    BatteryTemplateEntityDescription(
+        battery_1_key=rn.STORAGE_UNIT_1_BATTERY_PACK_2_CURRENT,
+        battery_2_key=rn.STORAGE_UNIT_2_BATTERY_PACK_2_CURRENT,
+        translation_key="pack_2_current",
+        icon="mdi:home-lightning-bolt-outline",
+        native_unit_of_measurement=UnitOfElectricCurrent.AMPERE,
+        state_class=SensorStateClass.MEASUREMENT,
+        device_class=SensorDeviceClass.CURRENT,
+    ),
+    BatteryTemplateEntityDescription(
+        battery_1_key=rn.STORAGE_UNIT_1_BATTERY_PACK_2_SOH_CALIBRATION_STATUS,
+        battery_2_key=rn.STORAGE_UNIT_2_BATTERY_PACK_2_SOH_CALIBRATION_STATUS,
+        translation_key="pack_2_soh_calibration_status",
+        entity_category=EntityCategory.DIAGNOSTIC,
+    ),
+    BatteryTemplateEntityDescription(
+        battery_1_key=rn.STORAGE_UNIT_1_BATTERY_PACK_2_TOTAL_CHARGE,
+        battery_2_key=rn.STORAGE_UNIT_2_BATTERY_PACK_2_TOTAL_CHARGE,
+        translation_key="pack_2_total_charge",
+        icon="mdi:battery-plus-variant",
+        native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
+        state_class=SensorStateClass.TOTAL_INCREASING,
+        device_class=SensorDeviceClass.ENERGY,
+    ),
+    BatteryTemplateEntityDescription(
+        battery_1_key=rn.STORAGE_UNIT_1_BATTERY_PACK_2_TOTAL_DISCHARGE,
+        battery_2_key=rn.STORAGE_UNIT_2_BATTERY_PACK_2_TOTAL_DISCHARGE,
+        translation_key="pack_2_total_discharge",
+        icon="mdi:battery-minus-variant",
+        native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
+        state_class=SensorStateClass.TOTAL_INCREASING,
+        device_class=SensorDeviceClass.ENERGY,
+    ),
+    # Pack 3 added features
+    BatteryTemplateEntityDescription(
+        battery_1_key=rn.STORAGE_UNIT_1_BATTERY_PACK_3_FIRMWARE_VERSION,
+        battery_2_key=rn.STORAGE_UNIT_2_BATTERY_PACK_3_FIRMWARE_VERSION,
+        translation_key="pack_3_firmware_version",
+        entity_category=EntityCategory.DIAGNOSTIC,
+    ),
+    BatteryTemplateEntityDescription(
+        battery_1_key=rn.STORAGE_UNIT_1_BATTERY_PACK_3_SERIAL_NUMBER,
+        battery_2_key=rn.STORAGE_UNIT_2_BATTERY_PACK_3_SERIAL_NUMBER,
+        translation_key="pack_3_serial_number",
+        entity_category=EntityCategory.DIAGNOSTIC,
+    ),
+    BatteryTemplateEntityDescription(
+        battery_1_key=rn.STORAGE_UNIT_1_BATTERY_PACK_3_WORKING_STATUS,
+        battery_2_key=rn.STORAGE_UNIT_2_BATTERY_PACK_3_WORKING_STATUS,
+        translation_key="pack_3_working_status",
+        entity_category=EntityCategory.DIAGNOSTIC,
+    ),
+    BatteryTemplateEntityDescription(
+        battery_1_key=rn.STORAGE_UNIT_1_BATTERY_PACK_3_STATE_OF_CAPACITY,
+        battery_2_key=rn.STORAGE_UNIT_2_BATTERY_PACK_3_STATE_OF_CAPACITY,
+        translation_key="pack_3_state_of_capacity",
+        native_unit_of_measurement=PERCENTAGE,
+        state_class=SensorStateClass.MEASUREMENT,
+    ),
+    BatteryTemplateEntityDescription(
+        battery_1_key=rn.STORAGE_UNIT_1_BATTERY_PACK_3_CHARGE_DISCHARGE_POWER,
+        battery_2_key=rn.STORAGE_UNIT_2_BATTERY_PACK_3_CHARGE_DISCHARGE_POWER,
+        translation_key="pack_3_charge_discharge_power",
+        icon="mdi:home-battery-outline",
+        native_unit_of_measurement=UnitOfPower.WATT,
+        state_class=SensorStateClass.MEASUREMENT,
+        device_class=SensorDeviceClass.POWER,
+    ),
+    BatteryTemplateEntityDescription(
+        battery_1_key=rn.STORAGE_UNIT_1_BATTERY_PACK_3_VOLTAGE,
+        battery_2_key=rn.STORAGE_UNIT_2_BATTERY_PACK_3_VOLTAGE,
+        translation_key="pack_3_voltage",
+        icon="mdi:home-lightning-bolt",
+        native_unit_of_measurement=UnitOfElectricPotential.VOLT,
+        state_class=SensorStateClass.MEASUREMENT,
+        device_class=SensorDeviceClass.VOLTAGE,
+    ),
+    BatteryTemplateEntityDescription(
+        battery_1_key=rn.STORAGE_UNIT_1_BATTERY_PACK_3_CURRENT,
+        battery_2_key=rn.STORAGE_UNIT_2_BATTERY_PACK_3_CURRENT,
+        translation_key="pack_3_current",
+        icon="mdi:home-lightning-bolt-outline",
+        native_unit_of_measurement=UnitOfElectricCurrent.AMPERE,
+        state_class=SensorStateClass.MEASUREMENT,
+        device_class=SensorDeviceClass.CURRENT,
+    ),
+    BatteryTemplateEntityDescription(
+        battery_1_key=rn.STORAGE_UNIT_1_BATTERY_PACK_3_SOH_CALIBRATION_STATUS,
+        battery_2_key=rn.STORAGE_UNIT_2_BATTERY_PACK_3_SOH_CALIBRATION_STATUS,
+        translation_key="pack_3_soh_calibration_status",
+        entity_category=EntityCategory.DIAGNOSTIC,
+    ),
+    BatteryTemplateEntityDescription(
+        battery_1_key=rn.STORAGE_UNIT_1_BATTERY_PACK_3_TOTAL_CHARGE,
+        battery_2_key=rn.STORAGE_UNIT_2_BATTERY_PACK_3_TOTAL_CHARGE,
+        translation_key="pack_3_total_charge",
+        icon="mdi:battery-plus-variant",
+        native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
+        state_class=SensorStateClass.TOTAL_INCREASING,
+        device_class=SensorDeviceClass.ENERGY,
+    ),
+    BatteryTemplateEntityDescription(
+        battery_1_key=rn.STORAGE_UNIT_1_BATTERY_PACK_3_TOTAL_DISCHARGE,
+        battery_2_key=rn.STORAGE_UNIT_2_BATTERY_PACK_3_TOTAL_DISCHARGE,
+        translation_key="pack_3_total_discharge",
+        icon="mdi:battery-minus-variant",
+        native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
+        state_class=SensorStateClass.TOTAL_INCREASING,
+        device_class=SensorDeviceClass.ENERGY,
     ),
 )
 
@@ -910,7 +1160,11 @@ def create_sun2000_entities(ucs: HuaweiSolarUpdateCoordinators) -> list[SensorEn
             for entity_description in THREE_PHASE_METER_ENTITY_DESCRIPTIONS
         )
 
-    if ucs.bridge.has_write_permission and ucs.configuration_update_coordinator:
+    if (
+        not ucs.bridge.connected_via_emma
+        and ucs.bridge.has_write_permission
+        and ucs.configuration_update_coordinator
+    ):
         entities_to_add.append(
             HuaweiSolarActivePowerControlModeEntity(
                 ucs.configuration_update_coordinator,
@@ -1022,30 +1276,35 @@ EMMA_SENSOR_DESCRIPTIONS: tuple[HuaweiSolarSensorEntityDescription, ...] = (
     ),
     HuaweiSolarSensorEntityDescription(
         key=rn.ENERGY_CHARGED_TODAY,
+        icon="mdi:battery-plus-variant",
         native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
         device_class=SensorDeviceClass.ENERGY,
         state_class=SensorStateClass.TOTAL_INCREASING,
     ),
     HuaweiSolarSensorEntityDescription(
         key=rn.TOTAL_CHARGED_ENERGY,
+        icon="mdi:battery-plus-variant",
         native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
         device_class=SensorDeviceClass.ENERGY,
         state_class=SensorStateClass.TOTAL,
     ),
     HuaweiSolarSensorEntityDescription(
         key=rn.ENERGY_DISCHARGED_TODAY,
+        icon="mdi:battery-minus-variant",
         native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
         device_class=SensorDeviceClass.ENERGY,
         state_class=SensorStateClass.TOTAL_INCREASING,
     ),
     HuaweiSolarSensorEntityDescription(
         key=rn.TOTAL_DISCHARGED_ENERGY,
+        icon="mdi:battery-minus-variant",
         native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
         device_class=SensorDeviceClass.ENERGY,
         state_class=SensorStateClass.TOTAL_INCREASING,
     ),
     HuaweiSolarSensorEntityDescription(
         key=rn.ESS_CHARGEABLE_ENERGY,
+        icon="mdi:battery-plus-variant",
         native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
         device_class=SensorDeviceClass.ENERGY_STORAGE,
         state_class=SensorStateClass.MEASUREMENT,
@@ -1053,6 +1312,7 @@ EMMA_SENSOR_DESCRIPTIONS: tuple[HuaweiSolarSensorEntityDescription, ...] = (
     ),
     HuaweiSolarSensorEntityDescription(
         key=rn.ESS_DISCHARGEABLE_ENERGY,
+        icon="mdi:battery-minus-variant",
         native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
         device_class=SensorDeviceClass.ENERGY_STORAGE,
         state_class=SensorStateClass.MEASUREMENT,
@@ -1060,9 +1320,10 @@ EMMA_SENSOR_DESCRIPTIONS: tuple[HuaweiSolarSensorEntityDescription, ...] = (
     ),
     HuaweiSolarSensorEntityDescription(
         key=rn.RATED_ESS_CAPACITY,
+        icon="mdi:home-battery-outline",
         native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
         device_class=SensorDeviceClass.ENERGY_STORAGE,
-        state_class=SensorStateClass.TOTAL_INCREASING,
+        state_class=SensorStateClass.MEASUREMENT,
         entity_registry_enabled_default=False,
     ),
     HuaweiSolarSensorEntityDescription(
@@ -1080,24 +1341,28 @@ EMMA_SENSOR_DESCRIPTIONS: tuple[HuaweiSolarSensorEntityDescription, ...] = (
     ),
     HuaweiSolarSensorEntityDescription(
         key=rn.FEED_IN_TO_GRID_TODAY,
+        icon="mdi:transmission-tower-import",
         native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
         device_class=SensorDeviceClass.ENERGY,
         state_class=SensorStateClass.TOTAL_INCREASING,
     ),
     HuaweiSolarSensorEntityDescription(
         key=rn.TOTAL_FEED_IN_TO_GRID,
+        icon="mdi:transmission-tower-import",
         native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
         device_class=SensorDeviceClass.ENERGY,
         state_class=SensorStateClass.TOTAL,
     ),
     HuaweiSolarSensorEntityDescription(
         key=rn.SUPPLY_FROM_GRID_TODAY,
+        icon="mdi:transmission-tower-export",
         native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
         device_class=SensorDeviceClass.ENERGY,
         state_class=SensorStateClass.TOTAL_INCREASING,
     ),
     HuaweiSolarSensorEntityDescription(
         key=rn.TOTAL_SUPPLY_FROM_GRID,
+        icon="mdi:transmission-tower-export",
         native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
         device_class=SensorDeviceClass.ENERGY,
         state_class=SensorStateClass.TOTAL,
@@ -1116,12 +1381,14 @@ EMMA_SENSOR_DESCRIPTIONS: tuple[HuaweiSolarSensorEntityDescription, ...] = (
     ),
     HuaweiSolarSensorEntityDescription(
         key=rn.PV_YIELD_TODAY,
+        icon="mdi:solar-power",
         native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
         device_class=SensorDeviceClass.ENERGY,
         state_class=SensorStateClass.TOTAL_INCREASING,
     ),
     HuaweiSolarSensorEntityDescription(
         key=rn.TOTAL_PV_ENERGY_YIELD,
+        icon="mdi:solar-power",
         native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
         device_class=SensorDeviceClass.ENERGY,
         state_class=SensorStateClass.TOTAL,
@@ -1165,6 +1432,7 @@ EMMA_SENSOR_DESCRIPTIONS: tuple[HuaweiSolarSensorEntityDescription, ...] = (
     ),
     HuaweiSolarSensorEntityDescription(
         key=rn.STATE_OF_CAPACITY,
+        icon="mdi:home-battery",
         native_unit_of_measurement=PERCENTAGE,
         state_class=SensorStateClass.MEASUREMENT,
     ),
@@ -1188,6 +1456,252 @@ EMMA_SENSOR_DESCRIPTIONS: tuple[HuaweiSolarSensorEntityDescription, ...] = (
         state_class=SensorStateClass.MEASUREMENT,
         entity_registry_enabled_default=False,
     ),
+    HuaweiSolarSensorEntityDescription(
+        key=rn.PHASE_A_VOLTAGE_BUILT_IN_ENERGY_SENSOR,
+        native_unit_of_measurement=UnitOfElectricPotential.VOLT,
+        device_class=SensorDeviceClass.VOLTAGE,
+        state_class=SensorStateClass.MEASUREMENT,
+        entity_registry_enabled_default=False,
+    ),
+    HuaweiSolarSensorEntityDescription(
+        key=rn.PHASE_B_VOLTAGE_BUILT_IN_ENERGY_SENSOR,
+        native_unit_of_measurement=UnitOfElectricPotential.VOLT,
+        device_class=SensorDeviceClass.VOLTAGE,
+        state_class=SensorStateClass.MEASUREMENT,
+        entity_registry_enabled_default=False,
+    ),
+    HuaweiSolarSensorEntityDescription(
+        key=rn.PHASE_C_VOLTAGE_BUILT_IN_ENERGY_SENSOR,
+        native_unit_of_measurement=UnitOfElectricPotential.VOLT,
+        device_class=SensorDeviceClass.VOLTAGE,
+        state_class=SensorStateClass.MEASUREMENT,
+        entity_registry_enabled_default=False,
+    ),
+    HuaweiSolarSensorEntityDescription(
+        key=rn.LINE_VOLTAGE_A_B_BUILT_IN_ENERGY_SENSOR,
+        native_unit_of_measurement=UnitOfElectricPotential.VOLT,
+        device_class=SensorDeviceClass.VOLTAGE,
+        state_class=SensorStateClass.MEASUREMENT,
+        entity_registry_enabled_default=False,
+    ),
+    HuaweiSolarSensorEntityDescription(
+        key=rn.LINE_VOLTAGE_B_C_BUILT_IN_ENERGY_SENSOR,
+        native_unit_of_measurement=UnitOfElectricPotential.VOLT,
+        device_class=SensorDeviceClass.VOLTAGE,
+        state_class=SensorStateClass.MEASUREMENT,
+        entity_registry_enabled_default=False,
+    ),
+    HuaweiSolarSensorEntityDescription(
+        key=rn.LINE_VOLTAGE_C_A_BUILT_IN_ENERGY_SENSOR,
+        native_unit_of_measurement=UnitOfElectricPotential.VOLT,
+        device_class=SensorDeviceClass.VOLTAGE,
+        state_class=SensorStateClass.MEASUREMENT,
+        entity_registry_enabled_default=False,
+    ),
+    HuaweiSolarSensorEntityDescription(
+        key=rn.PHASE_A_CURRENT_BUILT_IN_ENERGY_SENSOR,
+        native_unit_of_measurement=UnitOfElectricCurrent.AMPERE,
+        device_class=SensorDeviceClass.CURRENT,
+        state_class=SensorStateClass.MEASUREMENT,
+        entity_registry_enabled_default=False,
+    ),
+    HuaweiSolarSensorEntityDescription(
+        key=rn.PHASE_B_CURRENT_BUILT_IN_ENERGY_SENSOR,
+        native_unit_of_measurement=UnitOfElectricCurrent.AMPERE,
+        device_class=SensorDeviceClass.CURRENT,
+        state_class=SensorStateClass.MEASUREMENT,
+        entity_registry_enabled_default=False,
+    ),
+    HuaweiSolarSensorEntityDescription(
+        key=rn.PHASE_C_CURRENT_BUILT_IN_ENERGY_SENSOR,
+        native_unit_of_measurement=UnitOfElectricCurrent.AMPERE,
+        device_class=SensorDeviceClass.CURRENT,
+        state_class=SensorStateClass.MEASUREMENT,
+        entity_registry_enabled_default=False,
+    ),
+    HuaweiSolarSensorEntityDescription(
+        key=rn.ACTIVE_POWER_BUILT_IN_ENERGY_SENSOR,
+        native_unit_of_measurement=UnitOfPower.WATT,
+        device_class=SensorDeviceClass.POWER,
+        state_class=SensorStateClass.MEASUREMENT,
+    ),
+    HuaweiSolarSensorEntityDescription(
+        key=rn.POWER_FACTOR_BUILT_IN_ENERGY_SENSOR,
+        device_class=SensorDeviceClass.POWER_FACTOR,
+        state_class=SensorStateClass.MEASUREMENT,
+        entity_registry_enabled_default=False,
+    ),
+    HuaweiSolarSensorEntityDescription(
+        key=rn.APPARENT_POWER_BUILT_IN_ENERGY_SENSOR,
+        native_unit_of_measurement=UnitOfApparentPower.VOLT_AMPERE,
+        device_class=SensorDeviceClass.APPARENT_POWER,
+        state_class=SensorStateClass.MEASUREMENT,
+        entity_registry_enabled_default=False,
+    ),
+    HuaweiSolarSensorEntityDescription(
+        key=rn.PHASE_A_ACTIVE_POWER_BUILT_IN_ENERGY_SENSOR,
+        native_unit_of_measurement=UnitOfPower.WATT,
+        device_class=SensorDeviceClass.POWER,
+        state_class=SensorStateClass.MEASUREMENT,
+        entity_registry_enabled_default=False,
+    ),
+    HuaweiSolarSensorEntityDescription(
+        key=rn.PHASE_B_ACTIVE_POWER_BUILT_IN_ENERGY_SENSOR,
+        native_unit_of_measurement=UnitOfPower.WATT,
+        device_class=SensorDeviceClass.POWER,
+        state_class=SensorStateClass.MEASUREMENT,
+        entity_registry_enabled_default=False,
+    ),
+    HuaweiSolarSensorEntityDescription(
+        key=rn.PHASE_C_ACTIVE_POWER_BUILT_IN_ENERGY_SENSOR,
+        native_unit_of_measurement=UnitOfPower.WATT,
+        device_class=SensorDeviceClass.POWER,
+        state_class=SensorStateClass.MEASUREMENT,
+        entity_registry_enabled_default=False,
+    ),
+    HuaweiSolarSensorEntityDescription(
+        key=rn.TOTAL_ACTIVE_ENERGY_BUILT_IN_ENERGY_SENSOR,
+        native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
+        device_class=SensorDeviceClass.ENERGY,
+        state_class=SensorStateClass.TOTAL,
+    ),
+    HuaweiSolarSensorEntityDescription(
+        key=rn.TOTAL_NEGATIVE_ACTIVE_ENERGY_BUILT_IN_ENERGY_SENSOR,
+        native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
+        device_class=SensorDeviceClass.ENERGY,
+        state_class=SensorStateClass.TOTAL,
+    ),
+    HuaweiSolarSensorEntityDescription(
+        key=rn.TOTAL_POSITIVE_ACTIVE_ENERGY_BUILT_IN_ENERGY_SENSOR,
+        native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
+        device_class=SensorDeviceClass.ENERGY,
+        state_class=SensorStateClass.TOTAL,
+    ),
+    HuaweiSolarSensorEntityDescription(
+        key=rn.PHASE_A_VOLTAGE_EXTERNAL_ENERGY_SENSOR,
+        native_unit_of_measurement=UnitOfElectricPotential.VOLT,
+        device_class=SensorDeviceClass.VOLTAGE,
+        state_class=SensorStateClass.MEASUREMENT,
+        entity_registry_enabled_default=False,
+    ),
+    HuaweiSolarSensorEntityDescription(
+        key=rn.PHASE_B_VOLTAGE_EXTERNAL_ENERGY_SENSOR,
+        native_unit_of_measurement=UnitOfElectricPotential.VOLT,
+        device_class=SensorDeviceClass.VOLTAGE,
+        state_class=SensorStateClass.MEASUREMENT,
+        entity_registry_enabled_default=False,
+    ),
+    HuaweiSolarSensorEntityDescription(
+        key=rn.PHASE_C_VOLTAGE_EXTERNAL_ENERGY_SENSOR,
+        native_unit_of_measurement=UnitOfElectricPotential.VOLT,
+        device_class=SensorDeviceClass.VOLTAGE,
+        state_class=SensorStateClass.MEASUREMENT,
+        entity_registry_enabled_default=False,
+    ),
+    HuaweiSolarSensorEntityDescription(
+        key=rn.LINE_VOLTAGE_A_B_EXTERNAL_ENERGY_SENSOR,
+        native_unit_of_measurement=UnitOfElectricPotential.VOLT,
+        device_class=SensorDeviceClass.VOLTAGE,
+        state_class=SensorStateClass.MEASUREMENT,
+        entity_registry_enabled_default=False,
+    ),
+    HuaweiSolarSensorEntityDescription(
+        key=rn.LINE_VOLTAGE_B_C_EXTERNAL_ENERGY_SENSOR,
+        native_unit_of_measurement=UnitOfElectricPotential.VOLT,
+        device_class=SensorDeviceClass.VOLTAGE,
+        state_class=SensorStateClass.MEASUREMENT,
+        entity_registry_enabled_default=False,
+    ),
+    HuaweiSolarSensorEntityDescription(
+        key=rn.LINE_VOLTAGE_C_A_EXTERNAL_ENERGY_SENSOR,
+        native_unit_of_measurement=UnitOfElectricPotential.VOLT,
+        device_class=SensorDeviceClass.VOLTAGE,
+        state_class=SensorStateClass.MEASUREMENT,
+        entity_registry_enabled_default=False,
+    ),
+    HuaweiSolarSensorEntityDescription(
+        key=rn.PHASE_A_CURRENT_EXTERNAL_ENERGY_SENSOR,
+        native_unit_of_measurement=UnitOfElectricCurrent.AMPERE,
+        device_class=SensorDeviceClass.CURRENT,
+        state_class=SensorStateClass.MEASUREMENT,
+        entity_registry_enabled_default=False,
+    ),
+    HuaweiSolarSensorEntityDescription(
+        key=rn.PHASE_B_CURRENT_EXTERNAL_ENERGY_SENSOR,
+        native_unit_of_measurement=UnitOfElectricCurrent.AMPERE,
+        device_class=SensorDeviceClass.CURRENT,
+        state_class=SensorStateClass.MEASUREMENT,
+        entity_registry_enabled_default=False,
+    ),
+    HuaweiSolarSensorEntityDescription(
+        key=rn.PHASE_C_CURRENT_EXTERNAL_ENERGY_SENSOR,
+        native_unit_of_measurement=UnitOfElectricCurrent.AMPERE,
+        device_class=SensorDeviceClass.CURRENT,
+        state_class=SensorStateClass.MEASUREMENT,
+        entity_registry_enabled_default=False,
+    ),
+    HuaweiSolarSensorEntityDescription(
+        key=rn.ACTIVE_POWER_EXTERNAL_ENERGY_SENSOR,
+        native_unit_of_measurement=UnitOfPower.WATT,
+        device_class=SensorDeviceClass.POWER,
+        state_class=SensorStateClass.MEASUREMENT,
+        entity_registry_enabled_default=False,
+    ),
+    HuaweiSolarSensorEntityDescription(
+        key=rn.POWER_FACTOR_EXTERNAL_ENERGY_SENSOR,
+        device_class=SensorDeviceClass.POWER_FACTOR,
+        state_class=SensorStateClass.MEASUREMENT,
+        entity_registry_enabled_default=False,
+    ),
+    HuaweiSolarSensorEntityDescription(
+        key=rn.APPARENT_POWER_EXTERNAL_ENERGY_SENSOR,
+        native_unit_of_measurement=UnitOfApparentPower.VOLT_AMPERE,
+        device_class=SensorDeviceClass.APPARENT_POWER,
+        state_class=SensorStateClass.MEASUREMENT,
+        entity_registry_enabled_default=False,
+    ),
+    HuaweiSolarSensorEntityDescription(
+        key=rn.PHASE_A_ACTIVE_POWER_EXTERNAL_ENERGY_SENSOR,
+        native_unit_of_measurement=UnitOfPower.WATT,
+        device_class=SensorDeviceClass.POWER,
+        state_class=SensorStateClass.MEASUREMENT,
+        entity_registry_enabled_default=False,
+    ),
+    HuaweiSolarSensorEntityDescription(
+        key=rn.PHASE_B_ACTIVE_POWER_EXTERNAL_ENERGY_SENSOR,
+        native_unit_of_measurement=UnitOfPower.WATT,
+        device_class=SensorDeviceClass.POWER,
+        state_class=SensorStateClass.MEASUREMENT,
+        entity_registry_enabled_default=False,
+    ),
+    HuaweiSolarSensorEntityDescription(
+        key=rn.PHASE_C_ACTIVE_POWER_EXTERNAL_ENERGY_SENSOR,
+        native_unit_of_measurement=UnitOfPower.WATT,
+        device_class=SensorDeviceClass.POWER,
+        state_class=SensorStateClass.MEASUREMENT,
+        entity_registry_enabled_default=False,
+    ),
+    HuaweiSolarSensorEntityDescription(
+        key=rn.TOTAL_ACTIVE_ENERGY_EXTERNAL_ENERGY_SENSOR,
+        native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
+        device_class=SensorDeviceClass.ENERGY,
+        state_class=SensorStateClass.TOTAL,
+        entity_registry_enabled_default=False,
+    ),
+    HuaweiSolarSensorEntityDescription(
+        key=rn.TOTAL_NEGATIVE_ACTIVE_ENERGY_EXTERNAL_ENERGY_SENSOR,
+        native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
+        device_class=SensorDeviceClass.ENERGY,
+        state_class=SensorStateClass.TOTAL,
+        entity_registry_enabled_default=False,
+    ),
+    HuaweiSolarSensorEntityDescription(
+        key=rn.TOTAL_POSITIVE_ACTIVE_ENERGY_EXTERNAL_ENERGY_SENSOR,
+        native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
+        device_class=SensorDeviceClass.ENERGY,
+        state_class=SensorStateClass.TOTAL,
+        entity_registry_enabled_default=False,
+    ),
 )
 
 
@@ -1198,13 +1712,86 @@ def create_emma_entities(
     assert ucs.device_infos["emma"]
     assert isinstance(ucs.bridge, HuaweiEMMABridge)
 
-    return [
+    entities = [
         HuaweiSolarSensorEntity(
             ucs.inverter_update_coordinator,
             entity_description,
             ucs.device_infos["emma"],
         )
         for entity_description in EMMA_SENSOR_DESCRIPTIONS
+    ]
+
+    entities.append(
+        HuaweiSolarTOUPricePeriodsSensorEntity(
+            ucs.configuration_update_coordinator,
+            ucs.bridge,
+            ucs.device_infos["emma"],
+            register_name=rn.EMMA_TOU_PERIODS,
+            entity_registry_enabled_default=False,
+        )
+    )
+
+    return entities
+
+
+CHARGER_SENSOR_DESCRIPTIONS: tuple[HuaweiSolarSensorEntityDescription, ...] = (
+    HuaweiSolarSensorEntityDescription(
+        key=rn.CHARGER_RATED_POWER,
+        native_unit_of_measurement=UnitOfPower.KILO_WATT,
+        device_class=SensorDeviceClass.POWER,
+        state_class=SensorStateClass.MEASUREMENT,
+        entity_registry_enabled_default=False,
+    ),
+    HuaweiSolarSensorEntityDescription(
+        key=rn.CHARGER_PHASE_A_VOLTAGE_SENSOR,
+        native_unit_of_measurement=UnitOfElectricPotential.VOLT,
+        device_class=SensorDeviceClass.VOLTAGE,
+        state_class=SensorStateClass.MEASUREMENT,
+        entity_registry_enabled_default=False,
+    ),
+    HuaweiSolarSensorEntityDescription(
+        key=rn.CHARGER_PHASE_B_VOLTAGE_SENSOR,
+        native_unit_of_measurement=UnitOfElectricPotential.VOLT,
+        device_class=SensorDeviceClass.VOLTAGE,
+        state_class=SensorStateClass.MEASUREMENT,
+        entity_registry_enabled_default=False,
+    ),
+    HuaweiSolarSensorEntityDescription(
+        key=rn.CHARGER_PHASE_C_VOLTAGE_SENSOR,
+        native_unit_of_measurement=UnitOfElectricPotential.VOLT,
+        device_class=SensorDeviceClass.VOLTAGE,
+        state_class=SensorStateClass.MEASUREMENT,
+        entity_registry_enabled_default=False,
+    ),
+    HuaweiSolarSensorEntityDescription(
+        key=rn.CHARGER_TOTAL_ENERGY_CHARGED_SENSOR,
+        native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
+        device_class=SensorDeviceClass.ENERGY,
+        state_class=SensorStateClass.TOTAL_INCREASING,
+    ),
+    HuaweiSolarSensorEntityDescription(
+        key=rn.CHARGER_TEMPERATURE_SENSOR,
+        native_unit_of_measurement=UnitOfTemperature.CELSIUS,
+        device_class=SensorDeviceClass.TEMPERATURE,
+        state_class=SensorStateClass.MEASUREMENT,
+    ),
+)
+
+
+def create_charger_entities(
+    ucs: HuaweiSolarUpdateCoordinators,
+) -> list["HuaweiSolarSensorEntity"]:
+    """Create Charger sensor entities."""
+    assert ucs.device_infos["charger"]
+    assert isinstance(ucs.bridge, HuaweiChargerBridge)
+
+    return [
+        HuaweiSolarSensorEntity(
+            ucs.inverter_update_coordinator,
+            entity_description,
+            ucs.device_infos["charger"],
+        )
+        for entity_description in CHARGER_SENSOR_DESCRIPTIONS
     ]
 
 
@@ -1224,6 +1811,8 @@ async def async_setup_entry(
             entities_to_add.extend(create_sun2000_entities(ucs))
         elif isinstance(ucs.bridge, HuaweiEMMABridge):
             entities_to_add.extend(create_emma_entities(ucs))
+        elif isinstance(ucs.bridge, HuaweiChargerBridge):
+            entities_to_add.extend(create_charger_entities(ucs))
 
     async_add_entities(entities_to_add, True)
 
@@ -1327,13 +1916,13 @@ def _days_effective_to_str(days: tuple[bool, bool, bool, bool, bool, bool, bool]
     value = ""
     for i in range(7):  # Sunday is on index 0, but we want to name it day 7
         if days[(i + 1) % 7]:
-            value += f"{i+1}"
+            value += f"{i + 1}"
 
     return value
 
 
 def _time_int_to_str(time):
-    return f"{time//60:02d}:{time%60:02d}"
+    return f"{time // 60:02d}:{time % 60:02d}"
 
 
 class HuaweiSolarTOUPricePeriodsSensorEntity(
@@ -1350,21 +1939,20 @@ class HuaweiSolarTOUPricePeriodsSensorEntity(
         coordinator: HuaweiSolarUpdateCoordinator,
         bridge: HuaweiSolarBridge,
         device_info: DeviceInfo,
+        register_name: str = rn.STORAGE_HUAWEI_LUNA2000_TIME_OF_USE_CHARGING_AND_DISCHARGING_PERIODS,
+        entity_registry_enabled_default: bool = True,
     ) -> None:
         """Huawei Solar TOU Sensor Entity constructor."""
         super().__init__(
             coordinator,
-            {
-                "register_names": [
-                    rn.STORAGE_HUAWEI_LUNA2000_TIME_OF_USE_CHARGING_AND_DISCHARGING_PERIODS
-                ]
-            },
+            {"register_names": [register_name]},
         )
         self.coordinator = coordinator
 
         self.entity_description = HuaweiSolarSensorEntityDescription(
-            key=rn.STORAGE_HUAWEI_LUNA2000_TIME_OF_USE_CHARGING_AND_DISCHARGING_PERIODS,
+            key=register_name,
             icon="mdi:calendar-text",
+            entity_registry_enabled_default=entity_registry_enabled_default,
         )
 
         self._bridge = bridge
@@ -1400,17 +1988,17 @@ class HuaweiSolarTOUPricePeriodsSensorEntity(
             self._attr_native_value = len(data)
 
             if len(data) == 0:
-                self._attr_extra_state_attributes.clear()
+                self._attr_extra_state_attributes = {}
             elif isinstance(data[0], LG_RESU_TimeOfUsePeriod):
                 self._attr_extra_state_attributes = {
-                    f"Period {idx+1}": self._lg_resu_period_to_text(
+                    f"Period {idx + 1}": self._lg_resu_period_to_text(
                         cast(LG_RESU_TimeOfUsePeriod, period)
                     )
                     for idx, period in enumerate(data)
                 }
             elif isinstance(data[0], HUAWEI_LUNA2000_TimeOfUsePeriod):
                 self._attr_extra_state_attributes = {
-                    f"Period {idx+1}": self._huawei_luna2000_period_to_text(period)
+                    f"Period {idx + 1}": self._huawei_luna2000_period_to_text(period)
                     for idx, period in enumerate(data)
                 }
         else:
@@ -1428,8 +2016,6 @@ class HuaweiSolarCapacityControlPeriodsSensorEntity(
     It shows the number of configured capacity control periods, and has the
     contents of them as extended attributes
     """
-
-    _attr_extra_state_attributes: dict[str, Any] = {}
 
     def __init__(
         self,
@@ -1474,13 +2060,13 @@ class HuaweiSolarCapacityControlPeriodsSensorEntity(
             self._attr_available = True
             self._attr_native_value = len(data)
             self._attr_extra_state_attributes = {
-                f"Period {idx+1}": self._period_to_text(period)
+                f"Period {idx + 1}": self._period_to_text(period)
                 for idx, period in enumerate(data)
             }
         else:
             self._attr_available = False
             self._attr_native_value = None
-            self._attr_extra_state_attributes.clear()
+            self._attr_extra_state_attributes = {}
 
         self.async_write_ha_state()
 
@@ -1489,8 +2075,6 @@ class HuaweiSolarForcibleChargeEntity(
     CoordinatorEntity, HuaweiSolarEntity, SensorEntity
 ):
     """Huawei Solar Sensor for the current forcible charge status."""
-
-    _attr_extra_state_attributes: dict[str, Any] = {}
 
     REGISTER_NAMES = [
         rn.STORAGE_FORCIBLE_CHARGE_DISCHARGE_SETTING_MODE,  # is SoC or time the target?
@@ -1575,7 +2159,7 @@ class HuaweiSolarForcibleChargeEntity(
         else:
             self._attr_available = False
             self._attr_native_value = None
-            self._attr_extra_state_attributes.clear()
+            self._attr_extra_state_attributes = {}
         self.async_write_ha_state()
 
 
@@ -1655,7 +2239,7 @@ class HuaweiSolarActivePowerControlModeEntity(
         else:
             self._attr_available = False
             self._attr_native_value = None
-            self._attr_extra_state_attributes.clear()
+            self._attr_extra_state_attributes = {}
         self.async_write_ha_state()
 
 

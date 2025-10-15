@@ -93,8 +93,8 @@
             },
             "emma_maximum_feed_grid_power_watt": {
                 "name": "Maximum feed grid power"
-            }, 
-            "mppt_scanning_interval":{
+            },
+            "mppt_scanning_interval": {
                 "name": "MPPT scan interval"
             }
         },
@@ -201,6 +201,12 @@
             },
             "daily_yield_energy": {
                 "name": "Daily yield"
+            },
+            "monthly_yield_energy": {
+                "name": "Monthly yield"
+            },
+            "yearly_yield_energy": {
+                "name": "Yearly yield"
             },
             "day_active_power_peak": {
                 "name": "Day active power peak"
@@ -634,18 +640,21 @@
             "backup_power_state_of_charge": {
                 "name": "Backup power state of charge"
             },
+            "soh_calibration_status": {
+                "name": "SOH calibration status"
+            },
             "pack_1_max_temperature": {
                 "name": "Pack 1 max temperature"
             },
             "pack_1_min_temperature": {
                 "name": "Pack 1 min temperature"
-            }, 
+            },
             "pack_2_max_temperature": {
                 "name": "Pack 2 max temperature"
             },
             "pack_2_min_temperature": {
                 "name": "Pack 2 min temperature"
-            }, 
+            },
             "pack_3_max_temperature": {
                 "name": "Pack 3 max temperature"
             },
@@ -654,12 +663,105 @@
             },
             "pack_1_working_status": {
                 "name": "Pack 1 working status"
-            }, 
+            },
+            "pack_2_working_status": {
+                "name": "Pack 2 working status"
+            },
+            "pack_3_working_status": {
+                "name": "Pack 3 working status"
+            },
             "pack_1_firmware_version": {
                 "name": "Pack 1 firmware version"
             },
+            "pack_1_serial_number": {
+                "name": "Pack 1 serial number"
+            },
+            "pack_1_state_of_capacity": {
+                "name": "Pack 1 state of capacity"
+            },
+            "pack_1_charge_discharge_power": {
+                "name": "Pack 1 charge discharge power"
+            },
+            "pack_1_voltage": {
+                "name": "Pack 1 voltage"
+            },
+            "pack_1_current": {
+                "name": "Pack 1 current"
+            },
+            "pack_1_soh_calibration_status": {
+                "name": "Pack 1 SOH calibration status"
+            },
+            "pack_1_total_charge": {
+                "name": "Pack 1 total charge"
+            },
+            "pack_1_total_discharge": {
+                "name": "Pack 1 total discharge"
+            },
+            "pack_2_firmware_version": {
+                "name": "Pack 2 firmware version"
+            },
+            "pack_2_serial_number": {
+                "name": "Pack 2 serial number"
+            },
+            "pack_2_state_of_capacity": {
+                "name": "Pack 2 state of capacity"
+            },
+            "pack_2_charge_discharge_power": {
+                "name": "Pack 2 charge discharge power"
+            },
+            "pack_2_voltage": {
+                "name": "Pack 2 voltage"
+            },
+            "pack_2_current": {
+                "name": "Pack 2 current"
+            },
+            "pack_2_soh_calibration_status": {
+                "name": "Pack 2 SOH calibration status"
+            },
+            "pack_2_total_charge": {
+                "name": "Pack 2 total charge"
+            },
+            "pack_2_total_discharge": {
+                "name": "Pack 2 total discharge"
+            },
+            "pack_3_firmware_version": {
+                "name": "Pack 3 firmware version"
+            },
+            "pack_3_serial_number": {
+                "name": "Pack 3 serial number"
+            },
+            "pack_3_state_of_capacity": {
+                "name": "Pack 3 state of capacity"
+            },
+            "pack_3_charge_discharge_power": {
+                "name": "Pack 3 charge discharge power"
+            },
+            "pack_3_voltage": {
+                "name": "Pack 3 voltage"
+            },
+            "pack_3_current": {
+                "name": "Pack 3 current"
+            },
+            "pack_3_soh_calibration_status": {
+                "name": "Pack 3 SOH calibration status"
+            },
+            "pack_3_total_charge": {
+                "name": "Pack 3 total charge"
+            },
+            "pack_3_total_discharge": {
+                "name": "Pack 3 total discharge"
+            },
             "bms_temperature": {
                 "name": "BMS temperature"
+            },
+            "active_grid_a_current": {
+                "name": "Phase A current"
+            },
+            "active_grid_b_current": {
+                "name": "Phase B current"
+            },
+            "active_grid_c_current": {
+                "name": "Phase C current"
             }
         },
         "switch": {
@@ -679,7 +781,7 @@
             "description": "Forcible Charge of the battery for a certain time",
             "fields": {
                 "device_id": {
-                    "description": "Must be a 'Battery' device",
+                    "description": "Must be a 'Batteries' device",
                     "name": "Battery"
                 },
                 "duration": {
@@ -697,7 +799,7 @@
             "description": "Forcible Charge of the battery to a certain State of Charge level",
             "fields": {
                 "device_id": {
-                    "description": "Must be a 'Battery' device",
+                    "description": "Must be a 'Batteries' device",
                     "name": "Battery"
                 },
                 "power": {
@@ -715,7 +817,7 @@
             "description": "Forcible Discharge of the battery for a certain time",
             "fields": {
                 "device_id": {
-                    "description": "Must be a 'Battery' device",
+                    "description": "Must be a 'Batteries' device",
                     "name": "Battery"
                 },
                 "duration": {
@@ -733,7 +835,7 @@
             "description": "Forcible Discharge of the battery to a certain State of Charge level",
             "fields": {
                 "device_id": {
-                    "description": "Must be a 'Battery' device",
+                    "description": "Must be a 'Batteries' device",
                     "name": "Battery"
                 },
                 "power": {
@@ -751,8 +853,8 @@
             "description": "Set Active Power Control to the default Unlimited mode",
             "fields": {
                 "device_id": {
-                    "description": "Must be a 'Inverter' device",
-                    "name": "Inverter"
+                    "name": "Device",
+                    "description": "When an EMMA is present, it must be an 'EMMA' device. Otherwise: it must be an 'Inverter' device"
                 }
             },
             "name": "Set Active Power Control to Maximum Feed Grid Power"
@@ -761,7 +863,7 @@
             "description": "Set Capacity Control Periods",
             "fields": {
                 "device_id": {
-                    "description": "Must be a 'Battery' device",
+                    "description": "Must be a 'Batteries' device",
                     "name": "Battery"
                 },
                 "periods": {
@@ -799,8 +901,8 @@
             "description": "Sets Active Power Control to 'Power-limited grid connection' with the given wattage",
             "fields": {
                 "device_id": {
-                    "description": "Must be a 'Inverter' device",
-                    "name": "Inverter"
+                    "name": "Device",
+                    "description": "When an EMMA is present, it must be an 'EMMA' device. Otherwise: it must be an 'Inverter' device"
                 },
                 "power": {
                     "description": "Maximum Wattage",
@@ -813,8 +915,8 @@
             "description": "Sets Active Power Control to 'Power-limited grid connection (%)' with the given percentage",
             "fields": {
                 "device_id": {
-                    "description": "Must be a 'Inverter' device",
-                    "name": "Inverter"
+                    "name": "Device",
+                    "description": "When an EMMA is present, it must be an 'EMMA' device. Otherwise: it must be an 'Inverter' device"
                 },
                 "power_percentage": {
                     "description": "Maximum Percentage",
@@ -827,8 +929,8 @@
             "description": "Sets Time Of Use Periods",
             "fields": {
                 "device_id": {
-                    "description": "Must be a 'Battery' device",
-                    "name": "Battery"
+                    "name": "Device",
+                    "description": "When an EMMA is present, it must be an 'EMMA' device. Otherwise: it must be an 'Batteries' device"
                 },
                 "periods": {
                     "description": "One period per line. For Huawei LUNA2000 batteries: '[start time]-[end time]/[days effective]/[charge]', with 1=Monday, 7=Sunday (example: '12:00-14:00/1234567/-'). For LG RESU batteries: '[start time]-[end time]/[electricity price]' (example: 13:00-14:00/0.50)",
@@ -841,8 +943,8 @@
             "description": "Set Active Power Control to 'Zero power grid connection'",
             "fields": {
                 "device_id": {
-                    "description": "Must be a 'Inverter' device",
-                    "name": "Inverter"
+                    "name": "Device",
+                    "description": "When an EMMA is present, it must be an 'EMMA' device. Otherwise: it must be an 'Inverter' device"
                 }
             },
             "name": "Set Active Power Control to 'Zero power grid connection'"
@@ -851,7 +953,7 @@
             "description": "Cancel the running forcible charge command",
             "fields": {
                 "device_id": {
-                    "description": "Must be a 'Battery' device",
+                    "description": "Must be a 'Batteries' device",
                     "name": "Battery"
                 }
             },

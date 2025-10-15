@@ -96,6 +96,12 @@
             },
             "emma_maximum_feed_grid_power_watt": {
                 "name": "Maximum feed grid power"
+            },
+            "emma_tou_maximum_power_for_charging_batteries_from_grid": {
+                "name": "Maximum power for charging batteries from grid"
+            },
+            "emma_tou_periods": {
+                "name": "TOU price periods"
             }
         },
         "sensor": {
@@ -135,6 +141,15 @@
             "phase_c_current": {
                 "name": "Phase C current"
             },
+            "active_grid_a_current": {
+                "name": "Phase A current"
+            },
+            "active_grid_b_current": {
+                "name": "Phase B current"
+            },
+            "active_grid_c_current": {
+                "name": "Phase C current"
+            },
             "day_active_power_peak": {
                 "name": "Day active power peak"
             },
@@ -170,6 +185,12 @@
             },
             "daily_yield_energy": {
                 "name": "Daily yield"
+            },
+            "monthly_yield_energy": {
+                "name": "Monthly yield"
+            },
+            "yearly_yield_energy": {
+                "name": "Yearly yield"
             },
             "hourly_yield_energy": {
                 "name": "Hourly yield"
@@ -492,18 +513,21 @@
             "active_power_control": {
                 "name": "Active power control"
             },
+            "soh_calibration_status": {
+                "name": "SOH calibration status"
+            },
             "pack_1_max_temperature": {
                 "name": "Pack 1 max temperature"
             },
             "pack_1_min_temperature": {
                 "name": "Pack 1 min temperature"
-            }, 
+            },
             "pack_2_max_temperature": {
                 "name": "Pack 2 max temperature"
             },
             "pack_2_min_temperature": {
                 "name": "Pack 2 min temperature"
-            }, 
+            },
             "pack_3_max_temperature": {
                 "name": "Pack 3 max temperature"
             },
@@ -512,9 +536,93 @@
             },
             "pack_1_working_status": {
                 "name": "Pack 1 working status"
-            }, 
+            },
+            "pack_2_working_status": {
+                "name": "Pack 2 working status"
+            },
+            "pack_3_working_status": {
+                "name": "Pack 3 working status"
+            },
             "pack_1_firmware_version": {
                 "name": "Pack 1 firmware version"
+            },
+            "pack_1_serial_number": {
+                "name": "Pack 1 serial number"
+            },
+            "pack_1_state_of_capacity": {
+                "name": "Pack 1 state of capacity"
+            },
+            "pack_1_charge_discharge_power": {
+                "name": "Pack 1 charge discharge power"
+            },
+            "pack_1_voltage": {
+                "name": "Pack 1 voltage"
+            },
+            "pack_1_current": {
+                "name": "Pack 1 current"
+            },
+            "pack_1_soh_calibration_status": {
+                "name": "Pack 1 SOH calibration status"
+            },
+            "pack_1_total_charge": {
+                "name": "Pack 1 total charge"
+            },
+            "pack_1_total_discharge": {
+                "name": "Pack 1 total discharge"
+            },
+            "pack_2_firmware_version": {
+                "name": "Pack 2 firmware version"
+            },
+            "pack_2_serial_number": {
+                "name": "Pack 2 serial number"
+            },
+            "pack_2_state_of_capacity": {
+                "name": "Pack 2 state of capacity"
+            },
+            "pack_2_charge_discharge_power": {
+                "name": "Pack 2 charge discharge power"
+            },
+            "pack_2_voltage": {
+                "name": "Pack 2 voltage"
+            },
+            "pack_2_current": {
+                "name": "Pack 2 current"
+            },
+            "pack_2_soh_calibration_status": {
+                "name": "Pack 2 SOH calibration status"
+            },
+            "pack_2_total_charge": {
+                "name": "Pack 2 total charge"
+            },
+            "pack_2_total_discharge": {
+                "name": "Pack 2 total discharge"
+            },
+            "pack_3_firmware_version": {
+                "name": "Pack 3 firmware version"
+            },
+            "pack_3_serial_number": {
+                "name": "Pack 3 serial number"
+            },
+            "pack_3_state_of_capacity": {
+                "name": "Pack 3 state of capacity"
+            },
+            "pack_3_charge_discharge_power": {
+                "name": "Pack 3 charge discharge power"
+            },
+            "pack_3_voltage": {
+                "name": "Pack 3 voltage"
+            },
+            "pack_3_current": {
+                "name": "Pack 3 current"
+            },
+            "pack_3_soh_calibration_status": {
+                "name": "Pack 3 SOH calibration status"
+            },
+            "pack_3_total_charge": {
+                "name": "Pack 3 total charge"
+            },
+            "pack_3_total_discharge": {
+                "name": "Pack 3 total discharge"
             },
             "bms_temperature": {
                 "name": "BMS temperature"
@@ -614,6 +722,132 @@
             },
             "backup_power_state_of_charge": {
                 "name": "Backup power state of charge"
+            },
+            "phase_a_voltage_built_in_energy_sensor": {
+                "name": "Phase A voltage"
+            },
+            "phase_b_voltage_built_in_energy_sensor": {
+                "name": "Phase B voltage"
+            },
+            "phase_c_voltage_built_in_energy_sensor": {
+                "name": "Phase C voltage"
+            },
+            "line_voltage_a_b_built_in_energy_sensor": {
+                "name": "A-B line voltage"
+            },
+            "line_voltage_b_c_built_in_energy_sensor": {
+                "name": "B-C line voltage"
+            },
+            "line_voltage_c_a_built_in_energy_sensor": {
+                "name": "C-A line voltage"
+            },
+            "phase_a_current_built_in_energy_sensor": {
+                "name": "Phase A current"
+            },
+            "phase_b_current_built_in_energy_sensor": {
+                "name": "Phase B current"
+            },
+            "phase_c_current_built_in_energy_sensor": {
+                "name": "Phase C current"
+            },
+            "active_power_built_in_energy_sensor": {
+                "name": "Active power"
+            },
+            "power_factor_built_in_energy_sensor": {
+                "name": "Power factor"
+            },
+            "apparent_power_built_in_energy_sensor": {
+                "name": "Apparent power"
+            },
+            "phase_a_active_power_built_in_energy_sensor": {
+                "name": "Phase A active power"
+            },
+            "phase_b_active_power_built_in_energy_sensor": {
+                "name": "Phase B active power"
+            },
+            "phase_c_active_power_built_in_energy_sensor": {
+                "name": "Phase C active power"
+            },
+            "total_active_energy_built_in_energy_sensor": {
+                "name": "Total active energy"
+            },
+            "total_negative_active_energy_built_in_energy_sensor": {
+                "name": "Total negative active energy"
+            },
+            "total_positive_active_energy_built_in_energy_sensor": {
+                "name": "Total positive active energy"
+            },
+            "phase_a_voltage_external_energy_sensor": {
+                "name": "Phase A voltage"
+            },
+            "phase_b_voltage_external_energy_sensor": {
+                "name": "Phase B voltage"
+            },
+            "phase_c_voltage_external_energy_sensor": {
+                "name": "Phase C voltage"
+            },
+            "line_voltage_a_b_external_energy_sensor": {
+                "name": "A-B line voltage"
+            },
+            "line_voltage_b_c_external_energy_sensor": {
+                "name": "B-C line voltage"
+            },
+            "line_voltage_c_a_external_energy_sensor": {
+                "name": "C-A line voltage"
+            },
+            "phase_a_current_external_energy_sensor": {
+                "name": "Phase A current"
+            },
+            "phase_b_current_external_energy_sensor": {
+                "name": "Phase B current"
+            },
+            "phase_c_current_external_energy_sensor": {
+                "name": "Phase C current"
+            },
+            "active_power_external_energy_sensor": {
+                "name": "Active power"
+            },
+            "power_factor_external_energy_sensor": {
+                "name": "Power factor"
+            },
+            "apparent_power_external_energy_sensor": {
+                "name": "Apparent power"
+            },
+            "phase_a_active_power_external_energy_sensor": {
+                "name": "Phase A active power"
+            },
+            "phase_b_active_power_external_energy_sensor": {
+                "name": "Phase B active power"
+            },
+            "phase_c_active_power_external_energy_sensor": {
+                "name": "Phase C active power"
+            },
+            "total_active_energy_external_energy_sensor": {
+                "name": "Total active energy"
+            },
+            "total_negative_active_energy_external_energy_sensor": {
+                "name": "Total negative active energy"
+            },
+            "total_positive_active_energy_external_energy_sensor": {
+                "name": "Total positive active energy"
+            },
+            "charger_rated_power": {
+                "name": "Charger rated power"
+            },
+            "charger_phase_a_voltage_sensor": {
+                "name": "Charger Phase A voltage"
+            },
+            "charger_phase_b_voltage_sensor": {
+                "name": "Charger Phase B voltagey"
+            },
+            "charger_phase_c_voltage_sensor": {
+                "name": "Charger Phase C voltage"
+            },
+            "chager_total_energy_charged_sensor": {
+                "name": "Charger total charged energy"
+            },
+            "charger_temperature_sensor": {
+                "name": "Charger temperature"
             }
         },
         "select": {
@@ -681,7 +915,7 @@
             "fields": {
                 "device_id": {
                     "name": "Battery",
-                    "description": "Must be a 'Battery' device"
+                    "description": "Must be a 'Batteries' device"
                 },
                 "duration": {
                     "name": "Duration",
@@ -762,8 +996,8 @@
             "description": "Set Active Power Control to the default Unlimited mode",
             "fields": {
                 "device_id": {
-                    "name": "Inverter",
-                    "description": "Must be a 'Inverter' device"
+                    "name": "Device",
+                    "description": "When an EMMA is present, it must be an 'EMMA' device. Otherwise: it must be an 'Inverter' device"
                 }
             }
         },
@@ -772,8 +1006,8 @@
             "description": "Set Active Power Control to 'DI active scheduling'",
             "fields": {
                 "device_id": {
-                    "name": "[%key:component::huawei_solar::services::reset_maximum_feed_grid_power::fields::device_id::name%]",
-                    "description": "[%key:component::huawei_solar::services::reset_maximum_feed_grid_power::fields::device_id::description%]"
+                    "description": "Must be a 'Inverter' device",
+                    "name": "Inverter"
                 }
             }
         },
@@ -820,8 +1054,8 @@
             "description": "Sets Time Of Use Periods",
             "fields": {
                 "device_id": {
-                    "name": "[%key:component::huawei_solar::services::forcible_charge::fields::device_id::name%]",
-                    "description": "[%key:component::huawei_solar::services::forcible_charge::fields::device_id::description%]"
+                    "name": "Device",
+                    "description": "When an EMMA is present, it must be an 'EMMA' device. Otherwise: it must be an 'Batteries' device"
                 },
                 "periods": {
                     "name": "Periods",
@@ -876,6 +1110,9 @@
         },
         "battery_2": {
             "name": "Battery 2"
+        },
+        "charger": {
+            "name": "Charger"
         }
     }
 }
