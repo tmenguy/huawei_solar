@@ -42,7 +42,9 @@ from .const import (
     ENERGY_STORAGE_UPDATE_INTERVAL,
     INVERTER_UPDATE_INTERVAL,
     OPTIMIZER_UPDATE_INTERVAL,
-    POWER_METER_UPDATE_INTERVAL, CONF_INVERTER_UPDATE_INTERVAL, CONF_POWER_METER_UPDATE_INTERVAL,
+    POWER_METER_UPDATE_INTERVAL,
+    CONF_INVERTER_UPDATE_INTERVAL,
+    CONF_POWER_METER_UPDATE_INTERVAL,
     CONF_ENERGY_STORAGE_UPDATE_INTERVAL,
 )
 from .services import async_setup_services
@@ -232,6 +234,7 @@ async def _setup_inverter_device_data(
             via_device=(DOMAIN, device.serial_number),
         )
         power_meter_update_interval = timedelta(seconds=entry.data.get(CONF_POWER_METER_UPDATE_INTERVAL, POWER_METER_UPDATE_INTERVAL.total_seconds()))
+
         power_meter_update_coordinator = HuaweiSolarUpdateCoordinator(
             hass,
             _LOGGER,
