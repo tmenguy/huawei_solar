@@ -408,12 +408,15 @@ async def _setup_device_data(
         sw_version=sw_version,
     )
 
+    inverter_update_interval = timedelta(
+        seconds=entry.data.get(CONF_INVERTER_UPDATE_INTERVAL, INVERTER_UPDATE_INTERVAL.total_seconds()))
+
     update_coordinator = HuaweiSolarUpdateCoordinator(
         hass,
         _LOGGER,
         device=device,
         name=f"{device.serial_number}_data_update_coordinator",
-        update_interval=INVERTER_UPDATE_INTERVAL,
+        update_interval=inverter_update_interval,
     )
 
     if entry.data.get(CONF_ENABLE_PARAMETER_CONFIGURATION, False):
