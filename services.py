@@ -170,7 +170,8 @@ def _get_device_of_type_data[T](
 def get_emma_device(call: ServiceCall) -> HuaweiSolarDeviceData:
     """Return the HuaweiEMMABridge associated with the emma device_id in the service call."""
     return _get_device_of_type_data(call, EMMADevice)
-
+    
+EMMA_DEVICE_SCHEMA = vol.Schema({DATA_DEVICE_ID: vol.All(cv.string, str)})
 
 EMMA_DEVICE_SCHEMA = vol.Schema({DATA_DEVICE_ID: vol.All(cv.string, str)})
 
