@@ -109,30 +109,39 @@ async def validate_network_setup_auto_slave_discovery(
     )
     try:
         await client.connect()
-        device_infos = await get_device_infos(client)
-        _LOGGER.info("Received %d device infos", len(device_infos))
 
-        if not device_infos:
+        # first scan unit id 0 and 100, as these are commonly used for the main device (100 is the default for an SDongle)
+        # Then scan 1-16, if those didn't succeed, as they are commonly used unit-ids.
+        unit_ids_to_scan = [0, 100, *list(range(1, 17))]
+        primary_unit_id: int | None = None
+        found_device_infos = None
+
+        for unit_id in unit_ids_to_scan:
+            try:
+                device_infos = await get_device_infos(client.for_unit_id(unit_id))
+                if device_infos and device_infos[0].device_id is not None:
+                    primary_unit_id = unit_id
+                    found_device_infos = device_infos
+                    _LOGGER.info(
+                        "Found device at unit_id %s: type=%s, model=%s, software_version=%s",
+                        unit_id,
+                        device_infos[0].product_type,
+                        device_infos[0].model,
+                        device_infos[0].software_version,
+                    )
+                    break
+            except HuaweiSolarException, ReadException:
+                pass
+
+        if primary_unit_id is None or found_device_infos is None:
             raise DeviceException("No devices found")
 
-        device_info = device_infos[0]
-        _LOGGER.info(
-            "Device %s was auto-discovered of type %s with model %s and software version %s",
-            device_info.device_id,
-            device_info.product_type,
-            device_info.model,
-            device_info.software_version,
-        )
-
-        if device_info.device_id is None:
-            raise DeviceException("Primary device has no device_id")
-
-        # we assume the first device is the primary device
-        device = await create_device_instance(client.for_unit_id(device_info.device_id))
+        # Connect to the primary device (first discovered unit_id)
+        device = await create_device_instance(client.for_unit_id(primary_unit_id))
 
         _LOGGER.info(
-            "Successfully connected to device with ID %s: %s %s with SN %s",
-            device_info.device_id,
+            "Successfully connected to primary device with unit_id %s: %s %s with SN %s",
+            primary_unit_id,
             type(device).__name__,
             device.model_name,
             device.serial_number,
@@ -147,8 +156,8 @@ async def validate_network_setup_auto_slave_discovery(
             or await device.has_write_permission()
         )
 
-        unit_ids = [device_infos[0].device_id]
-        for device_info in device_infos[1:]:
+        unit_ids = [primary_unit_id]
+        for device_info in found_device_infos[1:]:
             if device_info.device_id is None:
                 _LOGGER.warning(
                     "Device with no device_id found. Skipping. Product type: %s, model: %s, software version: %s",
@@ -158,20 +167,13 @@ async def validate_network_setup_auto_slave_discovery(
                 )
                 continue
 
-            _LOGGER.info(
-                "Device %s was auto-discovered of type %s with model %s and software version %s",
-                device_info.device_id,
-                device_info.product_type,
-                device_info.model,
-                device_info.software_version,
-            )
             try:
                 sub_device = await create_sub_device_instance(
                     device, device_info.device_id
                 )
 
                 _LOGGER.info(
-                    "Successfully connected to sub device with ID %s. %s: %s with SN %s",
+                    "Successfully connected to sub device with unit_id %s. %s: %s with SN %s",
                     device_info.device_id,
                     type(sub_device).__name__,
                     sub_device.model_name,
@@ -182,7 +184,7 @@ async def validate_network_setup_auto_slave_discovery(
 
             except HuaweiSolarException:
                 _LOGGER.exception(
-                    "Error while processing sub device with ID %s. Skipping",
+                    "Error while connecting to sub device with unit_id %s. Skipping",
                     device_info.device_id,
                 )
 
@@ -432,7 +434,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                         self._serial_port, self._slave_ids
                     )
 
-                except (ConnectionException, ModbusConnectionError):
+                except ConnectionException, ModbusConnectionError:
                     errors["base"] = "cannot_connect"
                 except DeviceException:
                     errors["base"] = "slave_cannot_connect"
@@ -493,7 +495,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 info = await validate_serial_setup(self._serial_port, self._slave_ids)
             except UnitIdsParseException:
                 errors["base"] = "invalid_slave_ids"
-            except (ConnectionException, ModbusConnectionError):
+            except ConnectionException, ModbusConnectionError:
                 errors["base"] = "cannot_connect"
             except DeviceException:
                 errors["base"] = "slave_cannot_connect"
@@ -543,7 +545,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     )
                     self._slave_ids = info.pop("slave_ids")
 
-                except (ConnectionException, ModbusConnectionError):
+                except ConnectionException, ModbusConnectionError:
                     errors["base"] = "cannot_connect"
                 except DeviceException:
                     errors["base"] = "slave_cannot_connect"
@@ -569,7 +571,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                             elevated_permissions=self._elevated_permissions,
                         )
 
-                    except (ConnectionException, ModbusConnectionError):
+                    except ConnectionException, ModbusConnectionError:
                         errors["base"] = "cannot_connect"
                     except DeviceException:
                         errors["base"] = "slave_cannot_connect"
@@ -650,7 +652,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     return await self._create_or_update_entry(self._inverter_info)
 
                 errors["base"] = "invalid_auth"
-            except (ConnectionException, ModbusConnectionError):
+            except ConnectionException, ModbusConnectionError:
                 errors["base"] = "cannot_connect"
             except DeviceException:
                 errors["base"] = "slave_cannot_connect"
