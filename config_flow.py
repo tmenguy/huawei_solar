@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import contextlib
 import logging
 from typing import Any
@@ -110,28 +111,36 @@ async def validate_network_setup_auto_slave_discovery(
     try:
         await client.connect()
 
-        # first scan unit id 0 and 100, as these are commonly used for the main device (100 is the default for an SDongle)
-        # Then scan 1-16, if those didn't succeed, as they are commonly used unit-ids.
+        # Scan all candidate unit_ids in parallel; the first to respond becomes the primary device.
         unit_ids_to_scan = [0, 100, *list(range(1, 17))]
         primary_unit_id: int | None = None
         found_device_infos = None
 
-        for unit_id in unit_ids_to_scan:
-            try:
-                device_infos = await get_device_infos(client.for_unit_id(unit_id))
-                if device_infos and device_infos[0].device_id is not None:
-                    primary_unit_id = unit_id
-                    found_device_infos = device_infos
+        async def _probe(unit_id: int):
+            device_infos = await get_device_infos(client.for_unit_id(unit_id))
+            if not device_infos or device_infos[0].device_id is None:
+                raise DeviceException(f"No valid device at unit_id {unit_id}")
+            return unit_id, device_infos
+
+        tasks = [asyncio.create_task(_probe(uid)) for uid in unit_ids_to_scan]
+        try:
+            for coro in asyncio.as_completed(tasks):
+                try:
+                    primary_unit_id, found_device_infos = await coro
                     _LOGGER.info(
                         "Found device at unit_id %s: type=%s, model=%s, software_version=%s",
-                        unit_id,
-                        device_infos[0].product_type,
-                        device_infos[0].model,
-                        device_infos[0].software_version,
+                        primary_unit_id,
+                        found_device_infos[0].product_type,
+                        found_device_infos[0].model,
+                        found_device_infos[0].software_version,
                     )
                     break
-            except HuaweiSolarException, ReadException:
-                pass
+                except (HuaweiSolarException, ReadException, DeviceException):
+                    pass
+        finally:
+            for task in tasks:
+                task.cancel()
+            await asyncio.gather(*tasks, return_exceptions=True)
 
         if primary_unit_id is None or found_device_infos is None:
             raise DeviceException("No devices found")
