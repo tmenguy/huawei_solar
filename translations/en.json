@@ -14,6 +14,34 @@
             "unknown": "Unexpected error"
         },
         "step": {
+            "auto_discovery": {
+                "title": "Auto-discovering devices",
+                "description": "Scanning {host}:{port} for Huawei Solar devices using the Huawei discovery protocol. This may take up to a minute."
+            },
+            "scan_discovery": {
+                "title": "Scanning for devices",
+                "description": "Auto-discovery found no devices on {host}:{port}. Scanning frequently used slave IDs individually. This may take up to a minute."
+            },
+            "manual_connect": {
+                "title": "Connecting",
+                "description": "Connecting to {host}:{port} on slave ID(s): {slave_ids}."
+            },
+            "finish_network_setup": {
+                "title": "Connecting",
+                "description": "Connecting to the devices discovered at {host}:{port} and reading their configuration."
+            },
+            "confirm_setup": {
+                "title": "Device found",
+                "description": "Successfully connected to **{model_name}** (serial number: {serial_number}) on slave ID(s): {slave_ids}.\n\nPress Submit to add this device to Home Assistant."
+            },
+            "cannot_connect": {
+                "title": "Could not connect",
+                "description": "Could not connect to {host}:{port}. Please verify that:\n- The IP address and port are correct\n- The device is powered on and reachable on your network\n- No firewall is blocking the connection\n\nPress Submit to go back and try again."
+            },
+            "no_device_found": {
+                "title": "No device found",
+                "description": "Connected to {host}:{port} but no Huawei Solar device responded on slave ID {slave_id}. Please verify that:\n- The slave ID is correct\n- The inverter's Modbus TCP interface is enabled\n- The inverter is not in a state that blocks communication (e.g. night mode on some models)\n\nPress Submit to go back and try again."
+            },
             "network_login": {
                 "data": {
                     "password": "Password",
@@ -207,7 +235,7 @@
                 "name": "Phase C active power"
             },
             "active_grid_frequency": {
-                "name": "Frequency"
+                "name": "[%key:component::sensor::entity_component::frequency::name%]"
             },
             "active_grid_power_factor": {
                 "name": "Power factor"
@@ -609,7 +637,7 @@
                 "name": "Active power"
             },
             "power_meter_reactive_power": {
-                "name": "Reactive power"
+                "name": "[%key:component::sensor::entity_component::reactive_power::name%]"
             },
             "pv_01_current": {
                 "name": "PV 1 current"
@@ -768,7 +796,7 @@
                 "name": "Rated power"
             },
             "reactive_power": {
-                "name": "Reactive power"
+                "name": "[%key:component::sensor::entity_component::reactive_power::name%]"
             },
             "running_status": {
                 "name": "Running status"
@@ -792,10 +820,10 @@
                 "name": "Shutdown time"
             },
             "single_phase_meter_current": {
-                "name": "Current"
+                "name": "[%key:component::sensor::entity_component::current::name%]"
             },
             "single_phase_meter_voltage": {
-                "name": "Voltage"
+                "name": "[%key:component::sensor::entity_component::voltage::name%]"
             },
             "smartlogger_a_b_line_voltage_of_grid": {
                 "name": "Grid A-B line voltage"
@@ -923,6 +951,9 @@
             "storage_current_day_discharge_capacity": {
                 "name": "Day discharge"
             },
+            "storage_forcible_charge_discharge_write": {
+                "name": "Forcible charge/discharge"
+            },
             "storage_huawei_luna2000_time_of_use_charging_and_discharging_periods": {
                 "name": "TOU charging and discharging periods"
             },
@@ -954,7 +985,7 @@
                 "name": "Supply from grid today"
             },
             "temperature": {
-                "name": "Temperature"
+                "name": "[%key:component::sensor::entity_component::temperature::name%]"
             },
             "total_active_energy_built_in_energy": {
                 "name": "Total active energy"
@@ -1000,9 +1031,6 @@
             },
             "yearly_yield_energy": {
                 "name": "Yearly yield"
-            },
-            "storage_forcible_charge_discharge_write": {
-                "name": "Forcible charge/discharge"
             }
         },
         "switch": {
@@ -1121,8 +1149,8 @@
             "description": "Set Capacity Control Periods",
             "fields": {
                 "device_id": {
-                    "description": "When an EMMA is present, it must be an 'EMMA' device. Otherwise: it must be an 'Batteries' device",
-                    "name": "Device"
+                    "description": "Must be a 'Batteries' device",
+                    "name": "Battery"
                 },
                 "periods": {
                     "description": "One period per line. Format: '[start time]-[end time]/[days effective]/[power]W', with 1=Monday, 7=Sunday. Example: '00:00-23:59/1234567/2500W'.",
@@ -1135,8 +1163,8 @@
             "description": "Set Active Power Control to 'DI active scheduling'",
             "fields": {
                 "device_id": {
-                    "description": "When an EMMA is present, it must be an 'EMMA' device. Otherwise: it must be a 'Inverter' device",
-                    "name": "Device"
+                    "description": "Must be a 'Inverter' device",
+                    "name": "Inverter"
                 }
             },
             "name": "Set Active Power Control to 'DI active scheduling'"
@@ -1145,8 +1173,8 @@
             "description": "Sets Fixed Charge and Discharge Periods",
             "fields": {
                 "device_id": {
-                    "description": "When an EMMA is present, it must be an 'EMMA' device. Otherwise: it must be an 'Batteries' device",
-                    "name": "Device"
+                    "description": "Must be a 'Batteries' device",
+                    "name": "Battery"
                 },
                 "periods": {
                     "description": "One period per line. Format: '[start time]-[end time]/[power]W'. Example: '12:00-15:59/-1000W'.",
@@ -1159,7 +1187,7 @@
             "description": "Sets Active Power Control to 'Power-limited grid connection' with the given wattage",
             "fields": {
                 "device_id": {
-                    "description": "When an EMMA is present, it must be an 'EMMA' device. Otherwise: it must be a 'Inverter' device",
+                    "description": "When an EMMA is present, it must be an 'EMMA' device. Otherwise: it must be an 'Inverter' device",
                     "name": "Device"
                 },
                 "power": {
@@ -1173,7 +1201,7 @@
             "description": "Sets Active Power Control to 'Power-limited grid connection (%)' with the given percentage",
             "fields": {
                 "device_id": {
-                    "description": "When an EMMA is present, it must be an 'EMMA' device. Otherwise: it must be a 'Inverter' device",
+                    "description": "When an EMMA is present, it must be an 'EMMA' device. Otherwise: it must be an 'Inverter' device",
                     "name": "Device"
                 },
                 "power_percentage": {
@@ -1201,7 +1229,7 @@
             "description": "Set Active Power Control to 'Zero power grid connection'",
             "fields": {
                 "device_id": {
-                    "description": "When an EMMA is present, it must be an 'EMMA' device. Otherwise: it must be a 'Inverter' device",
+                    "description": "When an EMMA is present, it must be an 'EMMA' device. Otherwise: it must be an 'Inverter' device",
                     "name": "Device"
                 }
             },

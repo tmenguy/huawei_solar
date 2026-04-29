@@ -14,6 +14,34 @@
             "unknown": "Unexpected error"
         },
         "step": {
+            "auto_discovery": {
+                "title": "Auto-discovering devices",
+                "description": "Scanning {host}:{port} for Huawei Solar devices using the Huawei discovery protocol. This may take up to a minute."
+            },
+            "scan_discovery": {
+                "title": "Scanning for devices",
+                "description": "Auto-discovery found no devices on {host}:{port}. Scanning frequently used slave IDs individually. This may take up to a minute."
+            },
+            "manual_connect": {
+                "title": "Connecting",
+                "description": "Connecting to {host}:{port} on slave ID(s): {slave_ids}."
+            },
+            "finish_network_setup": {
+                "title": "Connecting",
+                "description": "Connecting to the devices discovered at {host}:{port} and reading their configuration."
+            },
+            "confirm_setup": {
+                "title": "Device found",
+                "description": "Successfully connected to **{model_name}** (serial number: {serial_number}) on slave ID(s): {slave_ids}.\n\nPress Submit to add this device to Home Assistant."
+            },
+            "cannot_connect": {
+                "title": "Could not connect",
+                "description": "Could not connect to {host}:{port}. Please verify that:\n- The IP address and port are correct\n- The device is powered on and reachable on your network\n- No firewall is blocking the connection\n\nPress Submit to go back and try again."
+            },
+            "no_device_found": {
+                "title": "No device found",
+                "description": "Connected to {host}:{port} but no Huawei Solar device responded on slave ID {slave_id}. Please verify that:\n- The slave ID is correct\n- The inverter's Modbus TCP interface is enabled\n- The inverter is not in a state that blocks communication (e.g. night mode on some models)\n\nPress Submit to go back and try again."
+            },
             "network_login": {
                 "data": {
                     "password": "Password",
