@@ -59,6 +59,11 @@ class HuaweiSolarUpdateCoordinator(
         try:
             async with asyncio.timeout(self.update_timeout.total_seconds()):
                 return await self.device.batch_update(list(register_names_set))
+        except TimeoutError as err:
+            raise UpdateFailed(
+                f"Timeout communicating with {self.device.serial_number}: "
+                "the device did not respond in time"
+            ) from err
         except HuaweiSolarException as err:
             raise UpdateFailed(
                 f"Could not update {self.device.serial_number} values: {err}"
@@ -96,6 +101,11 @@ class HuaweiSolarOptimizerUpdateCoordinator(
         try:
             async with asyncio.timeout(OPTIMIZER_UPDATE_TIMEOUT.total_seconds()):
                 return await self.device.get_latest_optimizer_history_data()
+        except TimeoutError as err:
+            raise UpdateFailed(
+                f"Timeout communicating with {self.device.serial_number} optimizers: "
+                "the device did not respond in time"
+            ) from err
         except HuaweiSolarException as err:
             raise UpdateFailed(
                 f"Could not update {self.device.serial_number} optimizer values: {err}"

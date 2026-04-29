@@ -2629,6 +2629,16 @@ class HuaweiSolarOptimizerSensorEntity(
         self._attr_device_info = device_info
         self._attr_unique_id = f"{device_info['name']}_{description.key}"
 
+    @property
+    def available(self) -> bool:
+        """Return if entity is available.
+
+        An optimizer entity is unavailable if the coordinator failed, or if the
+        specific optimizer is offline (except for the running_status entity, which
+        should always show the actual status).
+        """
+        return super().available and self._attr_available
+
     @callback
     def _handle_coordinator_update(self) -> None:
         """Handle updated data from the coordinator."""
