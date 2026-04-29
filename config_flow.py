@@ -18,7 +18,10 @@ from huawei_solar import (
     create_tcp_client,
     get_device_infos,
 )
+from huawei_solar.modbus_client import create_scan_tcp_client
+from huawei_solar.device import detect_device_type
 from huawei_solar.device.base import HuaweiSolarDeviceWithLogin
+from huawei_solar.exceptions import DeviceDetectionError
 import serial.tools.list_ports
 from tmodbus.exceptions import ModbusConnectionError
 import voluptuous as vol
@@ -95,58 +98,171 @@ async def validate_serial_setup(port: str, unit_ids: list[int]) -> dict[str, Any
             await client.disconnect()
 
 
-async def validate_network_setup_auto_slave_discovery(
+async def _auto_slave_discovery(
     *,
     host: str,
     port: int,
-    elevated_permissions: bool,
-) -> dict[str, Any]:
-    """Validate that we can connect to the device via the provided host and port. Try to autodiscover the slave ids."""
+) -> tuple[int, list[int]] | None:
+    """Probe unit_ids 0-16 and 100 in parallel via Huawei get_device_infos messages.
 
-    client = create_tcp_client(
-        host=host,
-        port=port,
-        unit_id=0,
-    )
+    Returns (primary_unit_id, sub_unit_ids) if a device responds, or None if not.
+    Opens and closes its own connection.
+    """
+    unit_ids_to_scan = [0, 100, *list(range(1, 17))]
+
+    async def _probe(unit_id: int):
+        _LOGGER.info("AUTO: probing unit_id %s via get_device_infos", unit_id)
+        try:
+            device_infos = await get_device_infos(client.for_unit_id(unit_id))
+        except (HuaweiSolarException, ReadException, TimeoutError) as err:
+            _LOGGER.info("AUTO: unit_id %s did not respond: %s", unit_id, err)
+            raise
+        if not device_infos or device_infos[0].device_id is None:
+            _LOGGER.info("AUTO: unit_id %s returned no valid device info", unit_id)
+            raise DeviceException(f"No valid device at unit_id {unit_id}")
+        _LOGGER.info(
+            "AUTO: unit_id %s responded: type=%s, model=%s, software_version=%s",
+            unit_id,
+            device_infos[0].product_type,
+            device_infos[0].model,
+            device_infos[0].software_version,
+        )
+        return unit_id, device_infos
+
+    client = create_tcp_client(host=host, port=port, unit_id=0)
     try:
         await client.connect()
-
-        # Scan all candidate unit_ids in parallel; the first to respond becomes the primary device.
-        unit_ids_to_scan = [0, 100, *list(range(1, 17))]
-        primary_unit_id: int | None = None
-        found_device_infos = None
-
-        async def _probe(unit_id: int):
-            device_infos = await get_device_infos(client.for_unit_id(unit_id))
-            if not device_infos or device_infos[0].device_id is None:
-                raise DeviceException(f"No valid device at unit_id {unit_id}")
-            return unit_id, device_infos
-
+        _LOGGER.info("AUTO: scanning unit_ids %s in parallel", unit_ids_to_scan)
         tasks = [asyncio.create_task(_probe(uid)) for uid in unit_ids_to_scan]
         try:
             for coro in asyncio.as_completed(tasks):
                 try:
                     primary_unit_id, found_device_infos = await coro
                     _LOGGER.info(
-                        "Found device at unit_id %s: type=%s, model=%s, software_version=%s",
+                        "AUTO: found device at unit_id %s: type=%s, model=%s, software_version=%s",
                         primary_unit_id,
                         found_device_infos[0].product_type,
                         found_device_infos[0].model,
                         found_device_infos[0].software_version,
                     )
-                    break
-                except (HuaweiSolarException, ReadException, DeviceException):
+                    sub_unit_ids = [
+                        di.device_id
+                        for di in found_device_infos[1:]
+                        if di.device_id is not None
+                    ]
+                    for di in found_device_infos[1:]:
+                        if di.device_id is None:
+                            _LOGGER.warning(
+                                "AUTO: device with no device_id found. Skipping. "
+                                "Product type: %s, model: %s, software version: %s",
+                                di.product_type,
+                                di.model,
+                                di.software_version,
+                            )
+                except (
+                    HuaweiSolarException,
+                    ReadException,
+                    DeviceException,
+                    TimeoutError,
+                ):
                     pass
+                else:
+                    return primary_unit_id, sub_unit_ids
         finally:
             for task in tasks:
                 task.cancel()
             await asyncio.gather(*tasks, return_exceptions=True)
+    finally:
+        with contextlib.suppress(Exception):
+            await client.disconnect()
 
-        if primary_unit_id is None or found_device_infos is None:
-            raise DeviceException("No devices found")
+    return None
 
-        # Connect to the primary device (first discovered unit_id)
-        device = await create_device_instance(client.for_unit_id(primary_unit_id))
+
+async def _scan_slave_discovery(
+    *,
+    host: str,
+    port: int,
+) -> tuple[int, list[int]]:
+    """Probe unit_ids 0-16 and 100 in parallel via detect_device_type.
+
+    Returns (primary_unit_id, sub_unit_ids) for all responding devices.
+    Raises DeviceException if no device is found.
+    Opens and closes its own connection. Does not use Huawei device-discovery
+    Modbus messages, making it compatible with modbus proxies.
+    """
+    unit_ids_to_scan = [0, 100, *list(range(1, 17))]
+
+    client = create_scan_tcp_client(host=host, port=port, unit_id=0)
+    try:
+        await client.connect()
+
+        async def _probe(unit_id: int) -> tuple[int, str] | None:
+            _LOGGER.debug("SCAN: probing unit_id %s via detect_device_type", unit_id)
+            try:
+                _, model_name = await detect_device_type(client.for_unit_id(unit_id))
+                _LOGGER.info(
+                    "SCAN: unit_id %s identified as model=%s", unit_id, model_name
+                )
+            except (
+                HuaweiSolarException,
+                ReadException,
+                DeviceDetectionError,
+                TimeoutError,
+            ) as err:
+                _LOGGER.info("SCAN: unit_id %s did not respond: %s", unit_id, err)
+                return None
+            else:
+                return unit_id, model_name
+
+        _LOGGER.info("SCAN: scanning unit_ids %s in parallel", unit_ids_to_scan)
+        results = await asyncio.gather(*[_probe(uid) for uid in unit_ids_to_scan])
+    finally:
+        with contextlib.suppress(Exception):
+            await client.disconnect()
+
+    found = [r for r in results if r is not None]
+    if not found:
+        _LOGGER.warning(
+            "SCAN: no devices found on any of unit_ids %s", unit_ids_to_scan
+        )
+        raise DeviceException("No devices found")
+
+    _LOGGER.info("SCAN: found %d device(s)", len(found))
+    for unit_id, model_name in found:
+        _LOGGER.info("SCAN: unit_id %s: model=%s", unit_id, model_name)
+
+    return found[0][0], [uid for uid, _ in found[1:]]
+
+
+async def validate_network_setup_auto_slave_discovery(
+    *,
+    host: str,
+    port: int,
+    elevated_permissions: bool,
+) -> dict[str, Any]:
+    """Auto-discover slave ids and validate connectivity.
+
+    First attempts discovery via Huawei get_device_infos messages (AUTO).
+    If that yields no results, falls back to probing each unit_id individually
+    via detect_device_type (SCAN), which works with modbus proxies that don't
+    support Huawei discovery messages.
+    """
+    result = await _auto_slave_discovery(host=host, port=port)
+    if result is None:
+        _LOGGER.warning(
+            "AUTO: no devices found via Huawei discovery messages. "
+            "Falling back to SCAN method using detect_device_type"
+        )
+        result = await _scan_slave_discovery(host=host, port=port)
+
+    primary_unit_id, sub_unit_ids = result
+
+    # Connect to the primary device and verify all sub-devices.
+    client = create_tcp_client(host=host, port=port, unit_id=primary_unit_id)
+    try:
+        await client.connect()
+        device = await create_device_instance(client)
 
         _LOGGER.info(
             "Successfully connected to primary device with unit_id %s: %s %s with SN %s",
@@ -156,48 +272,29 @@ async def validate_network_setup_auto_slave_discovery(
             device.serial_number,
         )
 
-        # Check if we have write access. If this is not the case, we will
-        # need to login (and request the username/password from the user to be
-        # able to do this).
-
         has_write_permission = elevated_permissions and (
             not isinstance(device, HuaweiSolarDeviceWithLogin)
             or await device.has_write_permission()
         )
 
         unit_ids = [primary_unit_id]
-        for device_info in found_device_infos[1:]:
-            if device_info.device_id is None:
-                _LOGGER.warning(
-                    "Device with no device_id found. Skipping. Product type: %s, model: %s, software version: %s",
-                    device_info.product_type,
-                    device_info.model,
-                    device_info.software_version,
-                )
-                continue
-
+        for sub_unit_id in sub_unit_ids:
             try:
-                sub_device = await create_sub_device_instance(
-                    device, device_info.device_id
-                )
-
+                sub_device = await create_sub_device_instance(device, sub_unit_id)
                 _LOGGER.info(
                     "Successfully connected to sub device with unit_id %s. %s: %s with SN %s",
-                    device_info.device_id,
+                    sub_unit_id,
                     type(sub_device).__name__,
                     sub_device.model_name,
                     sub_device.serial_number,
                 )
-
-                unit_ids.append(device_info.device_id)
-
+                unit_ids.append(sub_unit_id)
             except HuaweiSolarException:
                 _LOGGER.exception(
                     "Error while connecting to sub device with unit_id %s. Skipping",
-                    device_info.device_id,
+                    sub_unit_id,
                 )
 
-        # Return info that you want to store in the config entry.
         return {
             "slave_ids": unit_ids,
             "model_name": device.model_name,
@@ -545,7 +642,8 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             self._elevated_permissions = user_input[CONF_ENABLE_PARAMETER_CONFIGURATION]
 
             info = None
-            if user_input[CONF_SLAVE_IDS].lower() == "auto":
+            slave_ids_input = user_input[CONF_SLAVE_IDS].strip().upper()
+            if slave_ids_input == "AUTO":
                 try:
                     info = await validate_network_setup_auto_slave_discovery(
                         host=self._host,
