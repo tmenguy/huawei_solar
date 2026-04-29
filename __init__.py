@@ -138,7 +138,21 @@ async def async_setup_entry(hass: HomeAssistant, entry: HuaweiSolarConfigEntry) 
         entry.runtime_data = {
             DATA_DEVICE_DATAS: device_datas,
         }
-    except (ConnectionException, ConnectionInterruptedException) as err:
+    except ConnectionInterruptedException as err:
+        if primary_device is not None:
+            await primary_device.stop()
+        host = entry.data.get(CONF_HOST) or entry.data.get(CONF_PORT)
+        _LOGGER.warning(
+            "Connection to the inverter at %s was interrupted during setup. "
+            "The inverter only supports one Modbus connection at a time. "
+            "Check whether another device is currently connected to the inverter",
+            host,
+        )
+        raise ConfigEntryNotReady(
+            f"Connection to the inverter at {host} was interrupted, probably by another device. "
+            "The inverter only supports one Modbus connection at a time."
+        ) from err
+    except ConnectionException as err:
         if primary_device is not None:
             await primary_device.stop()
         host = entry.data.get(CONF_HOST) or entry.data.get(CONF_PORT)

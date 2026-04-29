@@ -11,6 +11,7 @@ from typing import Any
 
 from huawei_solar import (
     ConnectionException,
+    ConnectionInterruptedException,
     HuaweiSolarException,
     InvalidCredentials,
     ReadException,
@@ -625,7 +626,9 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                         info = await validate_serial_setup(
                             self._serial_port, self._slave_ids
                         )
-                    except ConnectionException, ModbusConnectionError:
+                    except ConnectionInterruptedException:
+                        errors["base"] = "connection_interrupted"
+                    except (ConnectionException, ModbusConnectionError):
                         errors["base"] = "cannot_connect"
                     except DeviceException:
                         errors["base"] = "slave_cannot_connect"
@@ -694,7 +697,9 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     info = await validate_serial_setup(
                         self._serial_port, self._slave_ids
                     )
-                except ConnectionException, ModbusConnectionError:
+                except ConnectionInterruptedException:
+                    errors["base"] = "connection_interrupted"
+                except (ConnectionException, ModbusConnectionError):
                     errors["base"] = "cannot_connect"
                 except DeviceException:
                     errors["base"] = "slave_cannot_connect"
@@ -731,7 +736,9 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         if self._discovery_task is None:
             if not Path(self._serial_port).is_char_device():
-                _LOGGER.warning("AUTO/serial: %s is not a serial device", self._serial_port)
+                _LOGGER.warning(
+                    "AUTO/serial: %s is not a serial device", self._serial_port
+                )
                 return await self.async_step_cannot_connect_serial()
 
             self._discovery_task = self.hass.async_create_background_task(
@@ -753,7 +760,14 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         task, self._discovery_task = self._discovery_task, None
         try:
             result = task.result()
-        except ConnectionException, ModbusConnectionError, TimeoutError:
+        except ConnectionInterruptedException:
+            _LOGGER.warning(
+                "AUTO/serial: connection interrupted on %s", self._serial_port
+            )
+            return self.async_show_progress_done(
+                next_step_id="connection_interrupted_serial"
+            )
+        except (ConnectionException, ModbusConnectionError, TimeoutError):
             _LOGGER.warning("AUTO/serial: could not open %s", self._serial_port)
             return self.async_show_progress_done(next_step_id="cannot_connect_serial")
         except Exception:
@@ -778,7 +792,9 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         if self._discovery_task is None:
             if not Path(self._serial_port).is_char_device():
-                _LOGGER.warning("SCAN/serial: %s is not a serial device", self._serial_port)
+                _LOGGER.warning(
+                    "SCAN/serial: %s is not a serial device", self._serial_port
+                )
                 return await self.async_step_cannot_connect_serial()
 
             self._discovery_task = self.hass.async_create_background_task(
@@ -800,7 +816,14 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         task, self._discovery_task = self._discovery_task, None
         try:
             result = task.result()
-        except ConnectionException, ModbusConnectionError, TimeoutError:
+        except ConnectionInterruptedException:
+            _LOGGER.warning(
+                "SCAN/serial: connection interrupted on %s", self._serial_port
+            )
+            return self.async_show_progress_done(
+                next_step_id="connection_interrupted_serial"
+            )
+        except (ConnectionException, ModbusConnectionError, TimeoutError):
             _LOGGER.warning("SCAN/serial: could not open %s", self._serial_port)
             return self.async_show_progress_done(next_step_id="cannot_connect_serial")
         except DeviceException:
@@ -841,7 +864,14 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         task, self._discovery_task = self._discovery_task, None
         try:
             info = task.result()
-        except ConnectionException, ModbusConnectionError, TimeoutError:
+        except ConnectionInterruptedException:
+            _LOGGER.warning(
+                "Connection interrupted on %s", self._serial_port
+            )
+            return self.async_show_progress_done(
+                next_step_id="connection_interrupted_serial"
+            )
+        except (ConnectionException, ModbusConnectionError, TimeoutError):
             _LOGGER.warning(
                 "Could not connect to discovered serial device on %s", self._serial_port
             )
@@ -872,6 +902,18 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         if user_input is None:
             return self.async_show_form(
                 step_id="cannot_connect_serial",
+                description_placeholders={"serial_port": self._serial_port or ""},
+            )
+        self._reset_discovery_state()
+        return await self.async_step_setup_serial()
+
+    async def async_step_connection_interrupted_serial(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Inform the user the connection was interrupted by another device, offer to retry."""
+        if user_input is None:
+            return self.async_show_form(
+                step_id="connection_interrupted_serial",
                 description_placeholders={"serial_port": self._serial_port or ""},
             )
         self._reset_discovery_state()
@@ -987,6 +1029,15 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             )
             self._failed_slave_id = err.unit_id
             return self.async_show_progress_done(next_step_id="no_device_found")
+        except ConnectionInterruptedException:
+            _LOGGER.warning(
+                "Connection to %s:%s was interrupted during setup, "
+                "probably due to another device connecting at the same time. "
+                "The inverter only supports one Modbus connection at a time",
+                self._host,
+                self._port,
+            )
+            return self.async_show_progress_done(next_step_id="connection_interrupted")
         except HuaweiSolarException, ReadException:
             _LOGGER.exception("Error while connecting to %s:%s", self._host, self._port)
             return self.async_show_progress_done(next_step_id="cannot_connect")
@@ -1036,7 +1087,12 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         task, self._discovery_task = self._discovery_task, None
         try:
             result = task.result()
-        except ConnectionException, ModbusConnectionError, TimeoutError:
+        except ConnectionInterruptedException:
+            _LOGGER.warning(
+                "AUTO: connection interrupted on %s:%s", self._host, self._port
+            )
+            return self.async_show_progress_done(next_step_id="connection_interrupted")
+        except (ConnectionException, ModbusConnectionError, TimeoutError):
             _LOGGER.warning("AUTO: could not connect to %s:%s", self._host, self._port)
             return self.async_show_progress_done(next_step_id="cannot_connect")
         except Exception:  # allowed in config flow
@@ -1084,7 +1140,12 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         task, self._discovery_task = self._discovery_task, None
         try:
             result = task.result()
-        except ConnectionException, ModbusConnectionError, TimeoutError:
+        except ConnectionInterruptedException:
+            _LOGGER.warning(
+                "SCAN: connection interrupted on %s:%s", self._host, self._port
+            )
+            return self.async_show_progress_done(next_step_id="connection_interrupted")
+        except (ConnectionException, ModbusConnectionError, TimeoutError):
             _LOGGER.warning("SCAN: could not connect to %s:%s", self._host, self._port)
             return self.async_show_progress_done(next_step_id="cannot_connect")
         except DeviceException:
@@ -1139,6 +1200,15 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 self._discovered_primary_unit_id,
             )
             return self.async_show_progress_done(next_step_id="cannot_connect")
+        except ConnectionInterruptedException:
+            _LOGGER.warning(
+                "Connection to %s:%s was interrupted during setup, "
+                "probably due to another device connecting at the same time. "
+                "The inverter only supports one Modbus connection at a time",
+                self._host,
+                self._port,
+            )
+            return self.async_show_progress_done(next_step_id="connection_interrupted")
         except HuaweiSolarException, DeviceException:
             _LOGGER.exception(
                 "Error while connecting to discovered device at %s:%s unit_id %s",
@@ -1187,6 +1257,21 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         if user_input is None:
             return self.async_show_form(
                 step_id="cannot_connect",
+                description_placeholders={
+                    "host": self._host or "",
+                    "port": str(self._port or ""),
+                },
+            )
+        self._reset_discovery_state()
+        return await self.async_step_setup_network()
+
+    async def async_step_connection_interrupted(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Inform the user the connection was interrupted by another device, offer to retry."""
+        if user_input is None:
+            return self.async_show_form(
+                step_id="connection_interrupted",
                 description_placeholders={
                     "host": self._host or "",
                     "port": str(self._port or ""),

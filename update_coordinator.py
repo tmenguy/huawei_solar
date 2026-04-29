@@ -7,7 +7,14 @@ from itertools import chain
 import logging
 from typing import Any
 
-from huawei_solar import HuaweiSolarException, ReadException, RegisterName, Result, SUN2000Device
+from huawei_solar import (
+    ConnectionInterruptedException,
+    HuaweiSolarException,
+    ReadException,
+    RegisterName,
+    Result,
+    SUN2000Device,
+)
 from huawei_solar.device.base import HuaweiSolarDevice
 from huawei_solar.files import OptimizerRealTimeData
 
@@ -79,6 +86,17 @@ class HuaweiSolarUpdateCoordinator(
             raise UpdateFailed(
                 f"Could not update {self.device.serial_number} values: {err}"
             ) from err
+        except ConnectionInterruptedException as err:
+            _LOGGER.warning(
+                "Connection to %s was interrupted during update. "
+                "The inverter only supports one Modbus connection at a time - "
+                "check whether another device has connected to the inverter",
+                self.device.serial_number,
+            )
+            raise UpdateFailed(
+                f"Connection to {self.device.serial_number} was interrupted, probably by another device. "
+                "The inverter only supports one Modbus connection at a time."
+            ) from err
         except HuaweiSolarException as err:
             raise UpdateFailed(
                 f"Could not update {self.device.serial_number} values: {err}"
@@ -120,6 +138,17 @@ class HuaweiSolarOptimizerUpdateCoordinator(
             raise UpdateFailed(
                 f"Timeout communicating with {self.device.serial_number} optimizers: "
                 "the device did not respond in time"
+            ) from err
+        except ConnectionInterruptedException as err:
+            _LOGGER.warning(
+                "Connection to %s was interrupted during optimizer update. "
+                "The inverter only supports one Modbus connection at a time - "
+                "check whether another device has connected to the inverter",
+                self.device.serial_number,
+            )
+            raise UpdateFailed(
+                f"Connection to {self.device.serial_number} was interrupted, probably by another device. "
+                "The inverter only supports one Modbus connection at a time."
             ) from err
         except HuaweiSolarException as err:
             raise UpdateFailed(
