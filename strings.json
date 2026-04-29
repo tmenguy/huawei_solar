@@ -22,6 +22,26 @@
                 "title": "Scanning for devices",
                 "description": "Auto-discovery found no devices on {host}:{port}. Scanning frequently used slave IDs individually. This may take up to a minute."
             },
+            "serial_auto_discovery": {
+                "title": "Auto-discovering devices",
+                "description": "Scanning {serial_port} for Huawei Solar devices using the Huawei discovery protocol. This may take up to a minute."
+            },
+            "serial_scan_discovery": {
+                "title": "Scanning for devices",
+                "description": "Auto-discovery found no devices on {serial_port}. Scanning frequently used slave IDs individually. This may take up to a minute."
+            },
+            "serial_finish_setup": {
+                "title": "Connecting",
+                "description": "Connecting to the devices discovered on {serial_port} and reading their configuration."
+            },
+            "cannot_connect_serial": {
+                "title": "Could not connect",
+                "description": "Could not open serial port {serial_port}. Please verify that:\n- The device is connected and the port is correct\n- No other application is using the port\n\nPress Submit to go back and try again."
+            },
+            "no_device_found_serial": {
+                "title": "No device found",
+                "description": "Connected to {serial_port} but no Huawei Solar device responded on slave ID {slave_id}. Please verify that:\n- The slave ID is correct\n- The inverter is powered on and its RS485 interface is enabled\n\nPress Submit to go back and try again."
+            },
             "manual_connect": {
                 "title": "Connecting",
                 "description": "Connecting to {host}:{port} on slave ID(s): {slave_ids}."
@@ -60,13 +80,14 @@
             "setup_serial": {
                 "data": {
                     "port": "Select device",
-                    "slave_ids": "Slave IDs (Comma separated)"
+                    "slave_ids": "Slave IDs: AUTO for auto-discovery, otherwise a comma separated list"
                 },
                 "title": "Device"
             },
             "setup_serial_manual_path": {
                 "data": {
-                    "port": "USB Device Path"
+                    "port": "USB Device Path",
+                    "slave_ids": "Slave IDs: AUTO for auto-discovery, otherwise a comma separated list"
                 },
                 "title": "Path"
             },
