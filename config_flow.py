@@ -2,12 +2,16 @@
 
 from __future__ import annotations
 
+import asyncio
 import contextlib
 import logging
+from pathlib import Path
+from collections.abc import Callable
 from typing import Any
 
 from huawei_solar import (
     ConnectionException,
+    ConnectionInterruptedException,
     HuaweiSolarException,
     InvalidCredentials,
     ReadException,
@@ -17,7 +21,10 @@ from huawei_solar import (
     create_tcp_client,
     get_device_infos,
 )
+from huawei_solar.modbus_client import create_scan_rtu_client, create_scan_tcp_client
+from huawei_solar.device import detect_device_type
 from huawei_solar.device.base import HuaweiSolarDeviceWithLogin
+from huawei_solar.exceptions import DeviceDetectionError
 import serial.tools.list_ports
 from tmodbus.exceptions import ModbusConnectionError
 import voluptuous as vol
@@ -101,99 +108,243 @@ async def validate_serial_setup(port: str, unit_ids: list[int]) -> dict[str, Any
             await client.disconnect()
 
 
-async def validate_network_setup_auto_slave_discovery(
+async def _auto_slave_discovery(
+    client: Any,
+    *,
+    on_progress: Callable[[float], None] | None = None,
+) -> tuple[int, list[int]] | None:
+    """Probe unit_ids 0-16 and 100 sequentially via Huawei get_device_infos messages.
+
+    Returns (primary_unit_id, sub_unit_ids) if a device responds, or None if not.
+    The caller owns ``client`` and is responsible for connecting/disconnecting it.
+    """
+    unit_ids_to_scan = [0, 100, *list(range(1, 17))]
+
+    async def _probe(unit_id: int):
+        _LOGGER.debug("AUTO: probing unit_id %s via get_device_infos", unit_id)
+        try:
+            device_infos = await get_device_infos(client.for_unit_id(unit_id))
+        except (HuaweiSolarException, ReadException, TimeoutError) as err:
+            _LOGGER.debug("AUTO: unit_id %s did not respond: %s", unit_id, err)
+            raise
+        if not device_infos or device_infos[0].device_id is None:
+            _LOGGER.debug("AUTO: unit_id %s returned no valid device info", unit_id)
+            raise DeviceException(f"No valid device at unit_id {unit_id}")
+        _LOGGER.debug(
+            "AUTO: unit_id %s responded: type=%s, model=%s, software_version=%s",
+            unit_id,
+            device_infos[0].product_type,
+            device_infos[0].model,
+            device_infos[0].software_version,
+        )
+        return unit_id, device_infos
+
+    _LOGGER.debug("AUTO: scanning unit_ids %s sequentially", unit_ids_to_scan)
+    for i, unit_id in enumerate(unit_ids_to_scan):
+        try:
+            primary_unit_id, found_device_infos = await _probe(unit_id)
+            _LOGGER.info(
+                "AUTO: found device at unit_id %s: type=%s, model=%s, software_version=%s",
+                primary_unit_id,
+                found_device_infos[0].product_type,
+                found_device_infos[0].model,
+                found_device_infos[0].software_version,
+            )
+            sub_unit_ids = [
+                di.device_id
+                for di in found_device_infos[1:]
+                if di.device_id is not None
+            ]
+            for di in found_device_infos[1:]:
+                if di.device_id is None:
+                    _LOGGER.warning(
+                        "AUTO: device with no device_id found. Skipping. "
+                        "Product type: %s, model: %s, software version: %s",
+                        di.product_type,
+                        di.model,
+                        di.software_version,
+                    )
+            if on_progress:
+                on_progress(1.0)
+        except (
+            HuaweiSolarException,
+            ReadException,
+            DeviceException,
+            TimeoutError,
+        ):
+            pass
+        else:
+            return primary_unit_id, sub_unit_ids
+        if on_progress:
+            on_progress((i + 1) / len(unit_ids_to_scan))
+
+    return None
+
+
+async def _tcp_auto_slave_discovery(
     *,
     host: str,
     port: int,
-    elevated_permissions: bool,
-) -> dict[str, Any]:
-    """Validate that we can connect to the device via the provided host and port. Try to autodiscover the slave ids."""
-
-    client = create_tcp_client(
-        host=host,
-        port=port,
-        unit_id=0,
-    )
+    on_progress: Callable[[float], None] | None = None,
+) -> tuple[int, list[int]] | None:
+    """Auto-discovery over TCP. Opens/closes its own connection."""
+    client = create_scan_tcp_client(host=host, port=port, unit_id=0)
     try:
         await client.connect()
-        device_infos = await get_device_infos(client)
-        _LOGGER.info("Received %d device infos", len(device_infos))
+        return await _auto_slave_discovery(client, on_progress=on_progress)
+    finally:
+        with contextlib.suppress(Exception):
+            await client.disconnect()
 
-        if not device_infos:
-            raise DeviceException("No devices found")
 
-        device_info = device_infos[0]
-        _LOGGER.info(
-            "Device %s was auto-discovered of type %s with model %s and software version %s",
-            device_info.device_id,
-            device_info.product_type,
-            device_info.model,
-            device_info.software_version,
+async def _rtu_auto_slave_discovery(
+    *,
+    serial_port: str,
+    on_progress: Callable[[float], None] | None = None,
+) -> tuple[int, list[int]] | None:
+    """Auto-discovery over RTU (serial). Opens/closes its own connection."""
+    client = create_scan_rtu_client(serial_port, unit_id=0)
+    try:
+        await client.connect()
+        return await _auto_slave_discovery(client, on_progress=on_progress)
+    finally:
+        with contextlib.suppress(Exception):
+            await client.disconnect()
+
+
+async def _scan_slave_discovery(
+    client: Any,
+    *,
+    on_progress: Callable[[float], None] | None = None,
+) -> tuple[int, list[int]]:
+    """Probe unit_ids 0-16 and 100 sequentially via detect_device_type.
+
+    Returns (primary_unit_id, sub_unit_ids) for all responding devices.
+    Raises DeviceException if no device is found.
+    The caller owns ``client`` and is responsible for connecting/disconnecting it.
+    Does not use Huawei device-discovery Modbus messages, making it compatible
+    with modbus proxies.
+    """
+    unit_ids_to_scan = [0, 100, *list(range(1, 17))]
+
+    async def _probe(unit_id: int) -> tuple[int, str] | None:
+        _LOGGER.debug("SCAN: probing unit_id %s via detect_device_type", unit_id)
+        try:
+            _, model_name = await detect_device_type(client.for_unit_id(unit_id))
+            _LOGGER.debug(
+                "SCAN: unit_id %s identified as model=%s", unit_id, model_name
+            )
+            return unit_id, model_name
+        except (
+            HuaweiSolarException,
+            ReadException,
+            DeviceDetectionError,
+            TimeoutError,
+        ) as err:
+            _LOGGER.debug("SCAN: unit_id %s did not respond: %s", unit_id, err)
+            return None
+
+    found: list[tuple[int, str]] = []
+    _LOGGER.debug("SCAN: scanning unit_ids %s sequentially", unit_ids_to_scan)
+    for i, unit_id in enumerate(unit_ids_to_scan):
+        result = await _probe(unit_id)
+        if result is not None:
+            found.append(result)
+        if on_progress:
+            on_progress((i + 1) / len(unit_ids_to_scan))
+
+    if not found:
+        _LOGGER.warning(
+            "SCAN: no devices found on any of unit_ids %s", unit_ids_to_scan
         )
+        raise DeviceException("No devices found")
 
-        if device_info.device_id is None:
-            raise DeviceException("Primary device has no device_id")
+    _LOGGER.info("SCAN: found %d device(s)", len(found))
+    for unit_id, model_name in found:
+        _LOGGER.info("SCAN: unit_id %s: model=%s", unit_id, model_name)
 
-        # we assume the first device is the primary device
-        device = await create_device_instance(client.for_unit_id(device_info.device_id))
+    return found[0][0], [uid for uid, _ in found[1:]]
+
+
+async def _tcp_scan_slave_discovery(
+    *,
+    host: str,
+    port: int,
+    on_progress: Callable[[float], None] | None = None,
+) -> tuple[int, list[int]]:
+    """Scan-discovery over TCP. Opens/closes its own connection."""
+    client = create_scan_tcp_client(host=host, port=port, unit_id=0)
+    try:
+        await client.connect()
+        return await _scan_slave_discovery(client, on_progress=on_progress)
+    finally:
+        with contextlib.suppress(Exception):
+            await client.disconnect()
+
+
+async def _rtu_scan_slave_discovery(
+    *,
+    serial_port: str,
+    on_progress: Callable[[float], None] | None = None,
+) -> tuple[int, list[int]]:
+    """Scan-discovery over RTU (serial). Opens/closes its own connection."""
+    client = create_scan_rtu_client(serial_port, unit_id=0)
+    try:
+        await client.connect()
+        return await _scan_slave_discovery(client, on_progress=on_progress)
+    finally:
+        with contextlib.suppress(Exception):
+            await client.disconnect()
+
+
+async def _connect_to_discovered_devices(
+    *,
+    host: str,
+    port: int,
+    primary_unit_id: int,
+    sub_unit_ids: list[int],
+    elevated_permissions: bool,
+) -> dict[str, Any]:
+    """Connect to the primary device and verify all sub-devices.
+
+    Returns a dict with slave_ids, model_name, serial_number and has_write_permission.
+    """
+    client = create_tcp_client(host=host, port=port, unit_id=primary_unit_id)
+    try:
+        await client.connect()
+        device = await create_device_instance(client)
 
         _LOGGER.info(
-            "Successfully connected to device with ID %s: %s %s with SN %s",
-            device_info.device_id,
+            "Successfully connected to primary device with unit_id %s: %s %s with SN %s",
+            primary_unit_id,
             type(device).__name__,
             device.model_name,
             device.serial_number,
         )
-
-        # Check if we have write access. If this is not the case, we will
-        # need to login (and request the username/password from the user to be
-        # able to do this).
 
         has_write_permission = elevated_permissions and (
             not isinstance(device, HuaweiSolarDeviceWithLogin)
             or await device.has_write_permission()
         )
 
-        unit_ids = [device_infos[0].device_id]
-        for device_info in device_infos[1:]:
-            if device_info.device_id is None:
-                _LOGGER.warning(
-                    "Device with no device_id found. Skipping. Product type: %s, model: %s, software version: %s",
-                    device_info.product_type,
-                    device_info.model,
-                    device_info.software_version,
-                )
-                continue
-
-            _LOGGER.info(
-                "Device %s was auto-discovered of type %s with model %s and software version %s",
-                device_info.device_id,
-                device_info.product_type,
-                device_info.model,
-                device_info.software_version,
-            )
+        unit_ids = [primary_unit_id]
+        for sub_unit_id in sub_unit_ids:
             try:
-                sub_device = await create_sub_device_instance(
-                    device, device_info.device_id
-                )
-
+                sub_device = await create_sub_device_instance(device, sub_unit_id)
                 _LOGGER.info(
-                    "Successfully connected to sub device with ID %s. %s: %s with SN %s",
-                    device_info.device_id,
+                    "Successfully connected to sub device with unit_id %s. %s: %s with SN %s",
+                    sub_unit_id,
                     type(sub_device).__name__,
                     sub_device.model_name,
                     sub_device.serial_number,
                 )
-
-                unit_ids.append(device_info.device_id)
-
+                unit_ids.append(sub_unit_id)
             except HuaweiSolarException:
                 _LOGGER.exception(
-                    "Error while processing sub device with ID %s. Skipping",
-                    device_info.device_id,
+                    "Error while connecting to sub device with unit_id %s. Skipping",
+                    sub_unit_id,
                 )
 
-        # Return info that you want to store in the config entry.
         return {
             "slave_ids": unit_ids,
             "model_name": device.model_name,
@@ -215,31 +366,42 @@ async def validate_network_setup(
     """Validate the user input allows us to connect.
 
     Data has the keys from STEP_SETUP_NETWORK_DATA_SCHEMA with values provided by the user.
+    Raises:
+        ConnectionException / ModbusConnectionError: if the TCP connection cannot be established.
+        DeviceException: if the TCP connection was established but the device rejected the
+            slave ID (connection closed by remote), or a sub-device could not be reached.
     """
-    client = create_tcp_client(
+    client = create_scan_tcp_client(
         host=host,
         port=port,
         unit_id=unit_ids[0],
     )
+    # Separate the TCP connect from the device communication so callers can
+    # distinguish "host unreachable" from "wrong slave ID".
+    await client.connect()
+
     try:
-        await client.connect()
-        device = await create_device_instance(client)
+        try:
+            device = await create_device_instance(client)
+        except (ConnectionException, ModbusConnectionError, TimeoutError) as err:
+            # TCP connected but device closed the connection → wrong slave ID.
+            raise DeviceException(
+                f"Device closed connection for unit_id {unit_ids[0]} - possibly wrong slave ID",
+                unit_id=unit_ids[0],
+            ) from err
 
         _LOGGER.info(
             "Successfully connected to device %s %s with SN %s",
-            (type(device).__name__),
+            type(device).__name__,
             device.model_name,
             device.serial_number,
         )
 
-        # Check if we have write access. If this is not the case, we will
-        # need to login (and request the username/password from the user to be
-        # able to do this).
         has_write_permission = elevated_permissions and (
             not isinstance(device, HuaweiSolarDeviceWithLogin)
             or await device.has_write_permission()
         )
-        # Also validate the other slave-ids
+
         for unit_id in unit_ids[1:]:
             try:
                 sub_device = await create_sub_device_instance(device, unit_id)
@@ -251,10 +413,16 @@ async def validate_network_setup(
                     sub_device.model_name,
                     sub_device.serial_number,
                 )
-            except HuaweiSolarException as err:
+            except (
+                HuaweiSolarException,
+                ConnectionException,
+                ModbusConnectionError,
+                TimeoutError,
+            ) as err:
                 _LOGGER.error("Could not connect to sub device %s", unit_id)
                 raise DeviceException(
-                    f"Could not connect to sub device {unit_id}"
+                    f"Could not connect to sub device {unit_id}",
+                    unit_id=unit_id,
                 ) from err
 
         return {
@@ -263,7 +431,6 @@ async def validate_network_setup(
             "has_write_permission": has_write_permission,
         }
     finally:
-        # Cleanup this inverter object explicitly to prevent it from trying to maintain a modbus connection
         with contextlib.suppress(Exception):
             await client.disconnect()
 
@@ -336,6 +503,19 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
     # Only used for async_step_network_login
     _inverter_info: dict[str, Any] | None = None
+
+    # Used across the auto/scan/finish discovery steps
+    _discovery_task: asyncio.Task | None = None
+    _discovered_primary_unit_id: int | None = None
+    _discovered_sub_unit_ids: list[int] = []
+    _failed_slave_id: int | None = None
+
+    def _reset_discovery_state(self) -> None:
+        """Clear all state used by the discovery progress steps."""
+        self._discovery_task = None
+        self._discovered_primary_unit_id = None
+        self._discovered_sub_unit_ids = []
+        self._failed_slave_id = None
 
     VERSION = 1
     MINOR_VERSION = 1
@@ -428,7 +608,8 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         errors = {}
 
         if user_input is not None:
-            self._host = None
+
+
             self._inverter_update_interval = user_input.get(CONF_INVERTER_UPDATE_INTERVAL,
                                                             INVERTER_UPDATE_INTERVAL.total_seconds())
             self._power_meter_update_interval = user_input.get(CONF_POWER_METER_UPDATE_INTERVAL,
@@ -436,37 +617,54 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             self._energy_storage_update_interval = user_input.get(CONF_ENERGY_STORAGE_UPDATE_INTERVAL,
                                                                   ENERGY_STORAGE_UPDATE_INTERVAL.total_seconds())
 
-            try:
-                self._slave_ids = parse_unit_ids(user_input[CONF_SLAVE_IDS])
-            except UnitIdsParseException:
-                errors["base"] = "invalid_slave_ids"
-            else:
-                if user_input[CONF_PORT] == CONF_MANUAL_PATH:
-                    return await self.async_step_setup_serial_manual_path()
+            self._host = None
+            slave_ids_input = user_input[CONF_SLAVE_IDS].strip().upper()
 
+            if user_input[CONF_PORT] == CONF_MANUAL_PATH:
+                if slave_ids_input == "AUTO":
+                    # Need the port first; go to manual path step which will
+                    # then route to auto-discovery.
+                    return await self.async_step_setup_serial_manual_path()
+                try:
+                    self._slave_ids = parse_unit_ids(user_input[CONF_SLAVE_IDS])
+                except UnitIdsParseException:
+                    errors["base"] = "invalid_slave_ids"
+                else:
+                    return await self.async_step_setup_serial_manual_path()
+            elif slave_ids_input == "AUTO":
                 self._serial_port = await self.hass.async_add_executor_job(
                     usb.get_serial_by_id, user_input[CONF_PORT]
                 )
-
+                return await self.async_step_serial_auto_discovery()
+            else:
                 try:
-                    assert isinstance(self._serial_port, str)
-                    info = await validate_serial_setup(
-                        self._serial_port, self._slave_ids
-                    )
-
-                except (ConnectionException, ModbusConnectionError):
-                    errors["base"] = "cannot_connect"
-                except DeviceException:
-                    errors["base"] = "slave_cannot_connect"
-                except ReadException:
-                    errors["base"] = "read_error"
-                except Exception:  # allowed in config flow
-                    _LOGGER.exception(
-                        "Unexpected exception while connecting over serial"
-                    )
-                    errors["base"] = "unknown"
+                    self._slave_ids = parse_unit_ids(user_input[CONF_SLAVE_IDS])
+                except UnitIdsParseException:
+                    errors["base"] = "invalid_slave_ids"
                 else:
-                    return await self._create_or_update_entry(info)
+                    self._serial_port = await self.hass.async_add_executor_job(
+                        usb.get_serial_by_id, user_input[CONF_PORT]
+                    )
+                    assert isinstance(self._serial_port, str)
+                    try:
+                        info = await validate_serial_setup(
+                            self._serial_port, self._slave_ids
+                        )
+                    except ConnectionInterruptedException:
+                        errors["base"] = "connection_interrupted"
+                    except (ConnectionException, ModbusConnectionError):
+                        errors["base"] = "cannot_connect"
+                    except DeviceException:
+                        errors["base"] = "slave_cannot_connect"
+                    except ReadException:
+                        errors["base"] = "read_error"
+                    except Exception:  # allowed in config flow
+                        _LOGGER.exception(
+                            "Unexpected exception while connecting over serial"
+                        )
+                        errors["base"] = "unknown"
+                    else:
+                        return await self._create_or_update_entry(info)
 
         ports = await self.hass.async_add_executor_job(serial.tools.list_ports.comports)
         list_of_ports = {
@@ -490,7 +688,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     CONF_SLAVE_IDS,
                     default=",".join(map(str, self._slave_ids))
                     if self._slave_ids
-                    else str(DEFAULT_SERIAL_SLAVE_ID),
+                    else "AUTO",
                 ): str,
                 vol.Required(
                     CONF_INVERTER_UPDATE_INTERVAL,
@@ -541,31 +739,43 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             self._serial_port = user_input[CONF_PORT]
             assert isinstance(self._serial_port, str)
 
+            slave_ids_input = user_input[CONF_SLAVE_IDS].strip().upper()
+            if slave_ids_input == "AUTO":
+                return await self.async_step_serial_auto_discovery()
+
             try:
-                self._slave_ids = list(map(int, user_input[CONF_SLAVE_IDS].split(",")))
-                info = await validate_serial_setup(self._serial_port, self._slave_ids)
+                self._slave_ids = parse_unit_ids(user_input[CONF_SLAVE_IDS])
             except UnitIdsParseException:
                 errors["base"] = "invalid_slave_ids"
-            except (ConnectionException, ModbusConnectionError):
-                errors["base"] = "cannot_connect"
-            except DeviceException:
-                errors["base"] = "slave_cannot_connect"
-            except ReadException:
-                errors["base"] = "read_error"
-            except Exception:  # allowed in config flow
-                _LOGGER.exception("Unexpected exception while connecting over serial")
-                errors["base"] = "unknown"
             else:
-                return await self._create_or_update_entry(info)
+                try:
+                    info = await validate_serial_setup(
+                        self._serial_port, self._slave_ids
+                    )
+                except ConnectionInterruptedException:
+                    errors["base"] = "connection_interrupted"
+                except (ConnectionException, ModbusConnectionError):
+                    errors["base"] = "cannot_connect"
+                except DeviceException:
+                    errors["base"] = "slave_cannot_connect"
+                except ReadException:
+                    errors["base"] = "read_error"
+                except Exception:  # allowed in config flow
+                    _LOGGER.exception(
+                        "Unexpected exception while connecting over serial"
+                    )
+                    errors["base"] = "unknown"
+                else:
+                    return await self._create_or_update_entry(info)
 
         schema = vol.Schema(
             {
-                vol.Required(CONF_PORT, default=self._port): str,
+                vol.Required(CONF_PORT, default=self._serial_port): str,
                 vol.Required(
                     CONF_SLAVE_IDS,
                     default=",".join(map(str, self._slave_ids))
                     if self._slave_ids
-                    else str(DEFAULT_SERIAL_SLAVE_ID),
+                    else "AUTO",
                 ): str,
             }
         )
@@ -573,11 +783,220 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             step_id="setup_serial_manual_path", data_schema=schema, errors=errors
         )
 
+    async def async_step_serial_auto_discovery(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Show a progress screen while auto-discovering over serial."""
+        assert self._serial_port is not None
+
+        if self._discovery_task is None:
+            if not Path(self._serial_port).is_char_device():
+                _LOGGER.warning(
+                    "AUTO/serial: %s is not a serial device", self._serial_port
+                )
+                return await self.async_step_cannot_connect_serial()
+
+            self._discovery_task = self.hass.async_create_background_task(
+                _rtu_auto_slave_discovery(
+                    serial_port=self._serial_port,
+                    on_progress=self.async_update_progress,
+                ),
+                "huawei_solar_serial_auto_discovery",
+            )
+
+        if not self._discovery_task.done():
+            return self.async_show_progress(
+                step_id="serial_auto_discovery",
+                progress_action="serial_auto_discovery",
+                progress_task=self._discovery_task,
+                description_placeholders={"serial_port": self._serial_port},
+            )
+
+        task, self._discovery_task = self._discovery_task, None
+        try:
+            result = task.result()
+        except ConnectionInterruptedException:
+            _LOGGER.warning(
+                "AUTO/serial: connection interrupted on %s", self._serial_port
+            )
+            return self.async_show_progress_done(
+                next_step_id="connection_interrupted_serial"
+            )
+        except (ConnectionException, ModbusConnectionError, TimeoutError):
+            _LOGGER.warning("AUTO/serial: could not open %s", self._serial_port)
+            return self.async_show_progress_done(next_step_id="cannot_connect_serial")
+        except Exception:
+            _LOGGER.exception("Unexpected exception during serial auto discovery")
+            return self.async_show_progress_done(next_step_id="cannot_connect_serial")
+
+        if result is None:
+            _LOGGER.warning(
+                "AUTO/serial: no devices found on %s. Falling back to SCAN method",
+                self._serial_port,
+            )
+            return self.async_show_progress_done(next_step_id="serial_scan_discovery")
+
+        self._discovered_primary_unit_id, self._discovered_sub_unit_ids = result
+        return self.async_show_progress_done(next_step_id="serial_finish_setup")
+
+    async def async_step_serial_scan_discovery(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Show a progress screen while scan-discovering over serial."""
+        assert self._serial_port is not None
+
+        if self._discovery_task is None:
+            if not Path(self._serial_port).is_char_device():
+                _LOGGER.warning(
+                    "SCAN/serial: %s is not a serial device", self._serial_port
+                )
+                return await self.async_step_cannot_connect_serial()
+
+            self._discovery_task = self.hass.async_create_background_task(
+                _rtu_scan_slave_discovery(
+                    serial_port=self._serial_port,
+                    on_progress=self.async_update_progress,
+                ),
+                "huawei_solar_serial_scan_discovery",
+            )
+
+        if not self._discovery_task.done():
+            return self.async_show_progress(
+                step_id="serial_scan_discovery",
+                progress_action="serial_scan_discovery",
+                progress_task=self._discovery_task,
+                description_placeholders={"serial_port": self._serial_port},
+            )
+
+        task, self._discovery_task = self._discovery_task, None
+        try:
+            result = task.result()
+        except ConnectionInterruptedException:
+            _LOGGER.warning(
+                "SCAN/serial: connection interrupted on %s", self._serial_port
+            )
+            return self.async_show_progress_done(
+                next_step_id="connection_interrupted_serial"
+            )
+        except (ConnectionException, ModbusConnectionError, TimeoutError):
+            _LOGGER.warning("SCAN/serial: could not open %s", self._serial_port)
+            return self.async_show_progress_done(next_step_id="cannot_connect_serial")
+        except DeviceException:
+            _LOGGER.warning("SCAN/serial: no devices found on %s", self._serial_port)
+            return self.async_show_progress_done(next_step_id="no_device_found_serial")
+        except Exception:
+            _LOGGER.exception("Unexpected exception during serial scan discovery")
+            return self.async_show_progress_done(next_step_id="cannot_connect_serial")
+
+        self._discovered_primary_unit_id, self._discovered_sub_unit_ids = result
+        return self.async_show_progress_done(next_step_id="serial_finish_setup")
+
+    async def async_step_serial_finish_setup(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Show a progress screen while connecting to the discovered serial devices."""
+        assert self._serial_port is not None
+        assert self._discovered_primary_unit_id is not None
+
+        if self._discovery_task is None:
+            unit_ids = [
+                self._discovered_primary_unit_id,
+                *self._discovered_sub_unit_ids,
+            ]
+            self._discovery_task = self.hass.async_create_background_task(
+                validate_serial_setup(self._serial_port, unit_ids),
+                "huawei_solar_serial_finish_setup",
+            )
+
+        if not self._discovery_task.done():
+            return self.async_show_progress(
+                step_id="serial_finish_setup",
+                progress_action="serial_finish_setup",
+                progress_task=self._discovery_task,
+                description_placeholders={"serial_port": self._serial_port},
+            )
+
+        task, self._discovery_task = self._discovery_task, None
+        try:
+            info = task.result()
+        except ConnectionInterruptedException:
+            _LOGGER.warning(
+                "Connection interrupted on %s", self._serial_port
+            )
+            return self.async_show_progress_done(
+                next_step_id="connection_interrupted_serial"
+            )
+        except (ConnectionException, ModbusConnectionError, TimeoutError):
+            _LOGGER.warning(
+                "Could not connect to discovered serial device on %s", self._serial_port
+            )
+            return self.async_show_progress_done(next_step_id="cannot_connect_serial")
+        except DeviceException:
+            _LOGGER.exception(
+                "Error while connecting to discovered serial device on %s",
+                self._serial_port,
+            )
+            return self.async_show_progress_done(next_step_id="no_device_found_serial")
+        except Exception:
+            _LOGGER.exception(
+                "Unexpected exception while connecting to discovered serial devices"
+            )
+            return self.async_show_progress_done(next_step_id="cannot_connect_serial")
+
+        self._slave_ids = [
+            self._discovered_primary_unit_id,
+            *self._discovered_sub_unit_ids,
+        ]
+        self._inverter_info = info
+        return self.async_show_progress_done(next_step_id="confirm_setup")
+
+    async def async_step_cannot_connect_serial(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Inform the user the serial port could not be opened, offer to retry."""
+        if user_input is None:
+            return self.async_show_form(
+                step_id="cannot_connect_serial",
+                description_placeholders={"serial_port": self._serial_port or ""},
+            )
+        self._reset_discovery_state()
+        return await self.async_step_setup_serial()
+
+    async def async_step_connection_interrupted_serial(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Inform the user the connection was interrupted by another device, offer to retry."""
+        if user_input is None:
+            return self.async_show_form(
+                step_id="connection_interrupted_serial",
+                description_placeholders={"serial_port": self._serial_port or ""},
+            )
+        self._reset_discovery_state()
+        return await self.async_step_setup_serial()
+
+    async def async_step_no_device_found_serial(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Inform the user no device responded on the serial port, offer to retry."""
+        if user_input is None:
+            placeholders: dict[str, str] = {
+                "serial_port": self._serial_port or "",
+                "slave_id": str(self._failed_slave_id)
+                if self._failed_slave_id is not None
+                else "unknown",
+            }
+            return self.async_show_form(
+                step_id="no_device_found_serial",
+                description_placeholders=placeholders,
+            )
+        self._reset_discovery_state()
+        return await self.async_step_setup_serial()
+
     async def async_step_setup_network(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
         """Handle connection parameters when using ModbusTCP."""
-        errors = {}
+        errors: dict[str, str] = {}
 
         if user_input is not None:
             self._host = user_input[CONF_HOST]
@@ -593,69 +1012,17 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             self._energy_storage_update_interval = user_input.get(CONF_ENERGY_STORAGE_UPDATE_INTERVAL,
                                                                   ENERGY_STORAGE_UPDATE_INTERVAL.total_seconds())
 
-            info = None
-            if user_input[CONF_SLAVE_IDS].lower() == "auto":
-                try:
-                    info = await validate_network_setup_auto_slave_discovery(
-                        host=self._host,
-                        port=self._port,
-                        elevated_permissions=self._elevated_permissions,
-                    )
-                    self._slave_ids = info.pop("slave_ids")
 
-                except (ConnectionException, ModbusConnectionError):
-                    errors["base"] = "cannot_connect"
-                except DeviceException:
-                    errors["base"] = "slave_cannot_connect"
-                except ReadException:
-                    _LOGGER.exception("Read exception while connecting via TCP")
-                    errors["base"] = "read_error"
-                except Exception:  # allowed in config flow
-                    _LOGGER.exception("Unexpected exception while connecting via TCP")
-                    errors["base"] = "unknown"
+            slave_ids_input = user_input[CONF_SLAVE_IDS].strip().upper()
+            if slave_ids_input == "AUTO":
+                return await self.async_step_auto_discovery()
+
+            try:
+                self._slave_ids = list(map(int, user_input[CONF_SLAVE_IDS].split(",")))
+            except ValueError:
+                errors["base"] = "invalid_slave_ids"
             else:
-                try:
-                    self._slave_ids = list(
-                        map(int, user_input[CONF_SLAVE_IDS].split(","))
-                    )
-                except ValueError:
-                    errors["base"] = "invalid_slave_ids"
-                else:
-                    try:
-                        info = await validate_network_setup(
-                            host=self._host,
-                            port=self._port,
-                            unit_ids=self._slave_ids,
-                            elevated_permissions=self._elevated_permissions,
-                        )
-
-                    except (ConnectionException, ModbusConnectionError):
-                        errors["base"] = "cannot_connect"
-                    except DeviceException:
-                        errors["base"] = "slave_cannot_connect"
-                    except ReadException:
-                        _LOGGER.exception("Read exception while connecting via TCP")
-                        errors["base"] = "read_error"
-                    except Exception:  # allowed in config flow
-                        _LOGGER.exception(
-                            "Unexpected exception while connecting via TCP"
-                        )
-                        errors["base"] = "unknown"
-
-            # info will be set when we successfully connected to the inverter
-            if info:
-                # Check if we need to ask for the login details
-                if self._elevated_permissions and info["has_write_permission"] is False:
-                    self.context["title_placeholders"] = {"name": info["model_name"]}
-                    self._inverter_info = info
-                    return await self.async_step_network_login()
-
-                # In case of a reconfigure, the user can have unchecked the elevated permissions checkbox
-                self._username = None
-                self._password = None
-
-                # Otherwise, we can directly create the device entry!
-                return await self._create_or_update_entry(info)
+                return await self.async_step_manual_connect()
 
         return self.async_show_form(
             step_id="setup_network",
@@ -709,6 +1076,321 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             ),
             errors=errors,
         )
+
+    async def async_step_manual_connect(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Show a progress screen while connecting to manually specified slave IDs."""
+        assert self._host is not None
+        assert self._port is not None
+        assert self._slave_ids is not None
+
+        if self._discovery_task is None:
+            self._discovery_task = self.hass.async_create_background_task(
+                validate_network_setup(
+                    host=self._host,
+                    port=self._port,
+                    unit_ids=self._slave_ids,
+                    elevated_permissions=self._elevated_permissions,
+                ),
+                "huawei_solar_manual_connect",
+            )
+
+        if not self._discovery_task.done():
+            return self.async_show_progress(
+                step_id="manual_connect",
+                progress_action="manual_connect",
+                progress_task=self._discovery_task,
+                description_placeholders={
+                    "host": self._host,
+                    "port": str(self._port),
+                    "slave_ids": ", ".join(str(s) for s in self._slave_ids),
+                },
+            )
+
+        task, self._discovery_task = self._discovery_task, None
+        try:
+            info = task.result()
+        except (ConnectionException, ModbusConnectionError, TimeoutError):
+            _LOGGER.warning("Could not connect to %s:%s", self._host, self._port)
+            return self.async_show_progress_done(next_step_id="cannot_connect")
+        except DeviceException as err:
+            _LOGGER.warning(
+                "Could not connect to one of the slave devices on %s:%s",
+                self._host,
+                self._port,
+            )
+            self._failed_slave_id = err.unit_id
+            return self.async_show_progress_done(next_step_id="no_device_found")
+        except ConnectionInterruptedException:
+            _LOGGER.warning(
+                "Connection to %s:%s was interrupted during setup, "
+                "probably due to another device connecting at the same time. "
+                "The inverter only supports one Modbus connection at a time",
+                self._host,
+                self._port,
+            )
+            return self.async_show_progress_done(next_step_id="connection_interrupted")
+        except (HuaweiSolarException, ReadException):
+            _LOGGER.exception("Error while connecting to %s:%s", self._host, self._port)
+            return self.async_show_progress_done(next_step_id="cannot_connect")
+        except Exception:  # allowed in config flow
+            _LOGGER.exception(
+                "Unexpected exception while connecting to %s:%s", self._host, self._port
+            )
+            return self.async_show_progress_done(next_step_id="cannot_connect")
+
+        self._inverter_info = info
+        if self._elevated_permissions and info["has_write_permission"] is False:
+            self.context["title_placeholders"] = {"name": info["model_name"]}
+            return self.async_show_progress_done(next_step_id="network_login")
+
+        self._username = None
+        self._password = None
+        return self.async_show_progress_done(next_step_id="confirm_setup")
+
+    async def async_step_auto_discovery(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Show a progress screen while probing via Huawei get_device_infos messages."""
+        assert self._host is not None
+        assert self._port is not None
+
+        if self._discovery_task is None:
+            self._discovery_task = self.hass.async_create_background_task(
+                _tcp_auto_slave_discovery(
+                    host=self._host,
+                    port=self._port,
+                    on_progress=self.async_update_progress,
+                ),
+                "huawei_solar_auto_discovery",
+            )
+
+        if not self._discovery_task.done():
+            return self.async_show_progress(
+                step_id="auto_discovery",
+                progress_action="auto_discovery",
+                progress_task=self._discovery_task,
+                description_placeholders={
+                    "host": self._host,
+                    "port": str(self._port),
+                },
+            )
+
+        task, self._discovery_task = self._discovery_task, None
+        try:
+            result = task.result()
+        except ConnectionInterruptedException:
+            _LOGGER.warning(
+                "AUTO: connection interrupted on %s:%s", self._host, self._port
+            )
+            return self.async_show_progress_done(next_step_id="connection_interrupted")
+        except (ConnectionException, ModbusConnectionError, TimeoutError):
+            _LOGGER.warning("AUTO: could not connect to %s:%s", self._host, self._port)
+            return self.async_show_progress_done(next_step_id="cannot_connect")
+        except Exception:  # allowed in config flow
+            _LOGGER.exception("Unexpected exception during auto discovery")
+            return self.async_show_progress_done(next_step_id="cannot_connect")
+
+        if result is None:
+            _LOGGER.warning(
+                "AUTO: no devices found via Huawei discovery messages. "
+                "Falling back to SCAN method"
+            )
+            return self.async_show_progress_done(next_step_id="scan_discovery")
+
+        self._discovered_primary_unit_id, self._discovered_sub_unit_ids = result
+        return self.async_show_progress_done(next_step_id="finish_network_setup")
+
+    async def async_step_scan_discovery(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Show a progress screen while probing via detect_device_type."""
+        assert self._host is not None
+        assert self._port is not None
+
+        if self._discovery_task is None:
+            self._discovery_task = self.hass.async_create_background_task(
+                _tcp_scan_slave_discovery(
+                    host=self._host,
+                    port=self._port,
+                    on_progress=self.async_update_progress,
+                ),
+                "huawei_solar_scan_discovery",
+            )
+
+        if not self._discovery_task.done():
+            return self.async_show_progress(
+                step_id="scan_discovery",
+                progress_action="scan_discovery",
+                progress_task=self._discovery_task,
+                description_placeholders={
+                    "host": self._host,
+                    "port": str(self._port),
+                },
+            )
+
+        task, self._discovery_task = self._discovery_task, None
+        try:
+            result = task.result()
+        except ConnectionInterruptedException:
+            _LOGGER.warning(
+                "SCAN: connection interrupted on %s:%s", self._host, self._port
+            )
+            return self.async_show_progress_done(next_step_id="connection_interrupted")
+        except (ConnectionException, ModbusConnectionError, TimeoutError):
+            _LOGGER.warning("SCAN: could not connect to %s:%s", self._host, self._port)
+            return self.async_show_progress_done(next_step_id="cannot_connect")
+        except DeviceException:
+            _LOGGER.warning("SCAN: no devices found on %s:%s", self._host, self._port)
+            return self.async_show_progress_done(next_step_id="no_device_found")
+        except Exception:  # allowed in config flow
+            _LOGGER.exception("Unexpected exception during scan discovery")
+            return self.async_show_progress_done(next_step_id="cannot_connect")
+
+        self._discovered_primary_unit_id, self._discovered_sub_unit_ids = result
+        return self.async_show_progress_done(next_step_id="finish_network_setup")
+
+    async def async_step_finish_network_setup(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Show a progress screen while connecting to the discovered devices."""
+        assert self._host is not None
+        assert self._port is not None
+        assert self._discovered_primary_unit_id is not None
+
+        if self._discovery_task is None:
+            self._discovery_task = self.hass.async_create_background_task(
+                _connect_to_discovered_devices(
+                    host=self._host,
+                    port=self._port,
+                    primary_unit_id=self._discovered_primary_unit_id,
+                    sub_unit_ids=self._discovered_sub_unit_ids,
+                    elevated_permissions=self._elevated_permissions,
+                ),
+                "huawei_solar_finish_network_setup",
+            )
+
+        if not self._discovery_task.done():
+            return self.async_show_progress(
+                step_id="finish_network_setup",
+                progress_action="finish_network_setup",
+                progress_task=self._discovery_task,
+                description_placeholders={
+                    "host": self._host,
+                    "port": str(self._port),
+                },
+            )
+
+        task, self._discovery_task = self._discovery_task, None
+        try:
+            info = task.result()
+        except (ConnectionException, ModbusConnectionError, TimeoutError):
+            _LOGGER.warning(
+                "Could not connect to discovered device at %s:%s unit_id %s",
+                self._host,
+                self._port,
+                self._discovered_primary_unit_id,
+            )
+            return self.async_show_progress_done(next_step_id="cannot_connect")
+        except ConnectionInterruptedException:
+            _LOGGER.warning(
+                "Connection to %s:%s was interrupted during setup, "
+                "probably due to another device connecting at the same time. "
+                "The inverter only supports one Modbus connection at a time",
+                self._host,
+                self._port,
+            )
+            return self.async_show_progress_done(next_step_id="connection_interrupted")
+        except (HuaweiSolarException, DeviceException):
+            _LOGGER.exception(
+                "Error while connecting to discovered device at %s:%s unit_id %s",
+                self._host,
+                self._port,
+                self._discovered_primary_unit_id,
+            )
+            return self.async_show_progress_done(next_step_id="no_device_found")
+        except Exception:  # allowed in config flow
+            _LOGGER.exception(
+                "Unexpected exception while connecting to discovered devices"
+            )
+            return self.async_show_progress_done(next_step_id="cannot_connect")
+
+        self._slave_ids = info.pop("slave_ids")
+        self._inverter_info = info
+
+        if self._elevated_permissions and info["has_write_permission"] is False:
+            self.context["title_placeholders"] = {"name": info["model_name"]}
+            return self.async_show_progress_done(next_step_id="network_login")
+
+        self._username = None
+        self._password = None
+        return self.async_show_progress_done(next_step_id="confirm_setup")
+
+    async def async_step_confirm_setup(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Show discovered device info and ask for confirmation before creating the entry."""
+        assert self._inverter_info is not None
+        if user_input is None:
+            return self.async_show_form(
+                step_id="confirm_setup",
+                description_placeholders={
+                    "model_name": self._inverter_info["model_name"],
+                    "serial_number": self._inverter_info["serial_number"],
+                    "slave_ids": ", ".join(str(sid) for sid in (self._slave_ids or [])),
+                },
+            )
+        return await self._create_or_update_entry(self._inverter_info)
+
+    async def async_step_cannot_connect(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Inform the user that the device could not be reached, offer to retry."""
+        if user_input is None:
+            return self.async_show_form(
+                step_id="cannot_connect",
+                description_placeholders={
+                    "host": self._host or "",
+                    "port": str(self._port or ""),
+                },
+            )
+        self._reset_discovery_state()
+        return await self.async_step_setup_network()
+
+    async def async_step_connection_interrupted(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Inform the user the connection was interrupted by another device, offer to retry."""
+        if user_input is None:
+            return self.async_show_form(
+                step_id="connection_interrupted",
+                description_placeholders={
+                    "host": self._host or "",
+                    "port": str(self._port or ""),
+                },
+            )
+        self._reset_discovery_state()
+        return await self.async_step_setup_network()
+
+    async def async_step_no_device_found(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Inform the user that no Huawei Solar device responded, offer to retry."""
+        if user_input is None:
+            placeholders: dict[str, str] = {
+                "host": self._host or "",
+                "port": str(self._port or ""),
+                "slave_id": str(self._failed_slave_id)
+                if self._failed_slave_id is not None
+                else "unknown",
+            }
+            return self.async_show_form(
+                step_id="no_device_found",
+                description_placeholders=placeholders,
+            )
+        self._reset_discovery_state()
+        return await self.async_step_setup_network()
 
     async def async_step_network_login(
         self, user_input: dict[str, Any] | None = None
@@ -815,3 +1497,8 @@ class UnitIdsParseException(Exception):
 
 class DeviceException(Exception):
     """Error while testing communication with a device."""
+
+    def __init__(self, message: str, unit_id: int | None = None) -> None:
+        """Initialize DeviceException."""
+        super().__init__(message)
+        self.unit_id = unit_id

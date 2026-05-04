@@ -7,7 +7,14 @@ from itertools import chain
 import logging
 from typing import Any
 
-from huawei_solar import HuaweiSolarException, RegisterName, Result, SUN2000Device
+from huawei_solar import (
+    ConnectionInterruptedException,
+    HuaweiSolarException,
+    ReadException,
+    RegisterName,
+    Result,
+    SUN2000Device,
+)
 from huawei_solar.device.base import HuaweiSolarDevice
 from huawei_solar.files import OptimizerRealTimeData
 
@@ -59,6 +66,37 @@ class HuaweiSolarUpdateCoordinator(
         try:
             async with asyncio.timeout(self.update_timeout.total_seconds()):
                 return await self.device.batch_update(list(register_names_set))
+        except TimeoutError as err:
+            raise UpdateFailed(
+                f"Timeout communicating with {self.device.serial_number}: "
+                "the device did not respond in time"
+            ) from err
+        except ReadException as err:
+            if err.modbus_exception_code == 0x02:  # ILLEGAL_DATA_ADDRESS
+                _LOGGER.error(
+                    "Device %s reported an illegal address error during a batch update. "
+                    "This likely means the library is querying a register that is not "
+                    "supported by your specific device. "
+                    "To find the culprit: systematically disable sensors one by one in "
+                    "Home Assistant, wait at least 30 seconds after each change, and "
+                    "check whether the error disappears. Please report the offending "
+                    "sensor to the integration maintainers.",
+                    self.device.serial_number,
+                )
+            raise UpdateFailed(
+                f"Could not update {self.device.serial_number} values: {err}"
+            ) from err
+        except ConnectionInterruptedException as err:
+            _LOGGER.warning(
+                "Connection to %s was interrupted during update. "
+                "The inverter only supports one Modbus connection at a time - "
+                "check whether another device has connected to the inverter",
+                self.device.serial_number,
+            )
+            raise UpdateFailed(
+                f"Connection to {self.device.serial_number} was interrupted, probably by another device. "
+                "The inverter only supports one Modbus connection at a time."
+            ) from err
         except HuaweiSolarException as err:
             raise UpdateFailed(
                 f"Could not update {self.device.serial_number} values: {err}"
@@ -96,6 +134,22 @@ class HuaweiSolarOptimizerUpdateCoordinator(
         try:
             async with asyncio.timeout(OPTIMIZER_UPDATE_TIMEOUT.total_seconds()):
                 return await self.device.get_latest_optimizer_history_data()
+        except TimeoutError as err:
+            raise UpdateFailed(
+                f"Timeout communicating with {self.device.serial_number} optimizers: "
+                "the device did not respond in time"
+            ) from err
+        except ConnectionInterruptedException as err:
+            _LOGGER.warning(
+                "Connection to %s was interrupted during optimizer update. "
+                "The inverter only supports one Modbus connection at a time - "
+                "check whether another device has connected to the inverter",
+                self.device.serial_number,
+            )
+            raise UpdateFailed(
+                f"Connection to {self.device.serial_number} was interrupted, probably by another device. "
+                "The inverter only supports one Modbus connection at a time."
+            ) from err
         except HuaweiSolarException as err:
             raise UpdateFailed(
                 f"Could not update {self.device.serial_number} optimizer values: {err}"

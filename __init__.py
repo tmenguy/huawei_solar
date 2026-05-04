@@ -4,6 +4,8 @@ import logging
 from datetime import timedelta
 
 from huawei_solar import (
+    ConnectionException,
+    ConnectionInterruptedException,
     EMMADevice,
     HuaweiSolarException,
     InvalidCredentials,
@@ -140,11 +142,60 @@ async def async_setup_entry(hass: HomeAssistant, entry: HuaweiSolarConfigEntry) 
         entry.runtime_data = {
             DATA_DEVICE_DATAS: device_datas,
         }
-    except (HuaweiSolarException, TimeoutError) as err:
+    except ConnectionInterruptedException as err:
         if primary_device is not None:
             await primary_device.stop()
+        host = entry.data.get(CONF_HOST) or entry.data.get(CONF_PORT)
+        _LOGGER.warning(
+            "Connection to the inverter at %s was interrupted during setup. "
+            "The inverter only supports one Modbus connection at a time. "
+            "Check whether another device is currently connected to the inverter",
+            host,
+        )
+        raise ConfigEntryNotReady(
+            f"Connection to the inverter at {host} was interrupted, probably by another device. "
+            "The inverter only supports one Modbus connection at a time."
+        ) from err
+    except ConnectionException as err:
+        if primary_device is not None:
+            await primary_device.stop()
+        host = entry.data.get(CONF_HOST) or entry.data.get(CONF_PORT)
+        _LOGGER.warning(
+            "Cannot connect to the inverter at %s. "
+            "Verify the address and that the device is reachable on the network. "
+            "If the inverter's IP address has changed, reconfigure the integration",
+            host,
+        )
+        raise ConfigEntryNotReady(
+            f"Cannot connect to the inverter at {host}. "
+            "Verify the address and that the device is reachable. "
+            "If the IP address has changed, reconfigure the integration."
+        ) from err
 
-        raise ConfigEntryNotReady from err
+    except TimeoutError as err:
+        if primary_device is not None:
+            await primary_device.stop()
+        _LOGGER.warning(
+            "The inverter is not responding to requests. "
+            "The connection was established but no data was received. "
+            "The device may be starting up, overloaded, or blocking Modbus requests"
+        )
+        raise ConfigEntryNotReady(
+            "The inverter is not responding to requests. "
+            "It may be starting up or temporarily busy."
+        ) from err
+
+    except HuaweiSolarException as err:
+        if primary_device is not None:
+            await primary_device.stop()
+        _LOGGER.warning(
+            "Failed to communicate with the inverter during setup: %s. ",
+            err,
+            exc_info=err,
+        )
+        raise ConfigEntryNotReady(
+            f"Failed to communicate with the inverter: {err}"
+        ) from err
 
     except Exception:
         # always try to stop the bridge, as it will keep retrying

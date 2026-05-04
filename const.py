@@ -22,7 +22,6 @@ CONF_ENERGY_STORAGE_UPDATE_INTERVAL = "energy_storage_update_interval"
 INVERTER_UPDATE_INTERVAL = timedelta(seconds=30)
 POWER_METER_UPDATE_INTERVAL = timedelta(seconds=30)
 ENERGY_STORAGE_UPDATE_INTERVAL = timedelta(seconds=30)
-
 UPDATE_TIMEOUT = timedelta(seconds=29)
 # configuration can only change when edited through FusionSolar web or app
 CONFIGURATION_UPDATE_INTERVAL = timedelta(minutes=15)
