@@ -92,19 +92,16 @@
             "setup_serial": {
                 "data": {
                     "port": "Select device",
+                    "baudrate": "Baud rate",
                     "slave_ids": "Slave IDs: AUTO for auto-discovery, otherwise a comma separated list",
                     "inverter_update_interval": "[%key:component::huawei_solar::config::step::setup_network::data::inverter_update_interval%]",
                     "power_meter_update_interval": "[%key:component::huawei_solar::config::step::setup_network::data::power_meter_update_interval%]",
                     "energy_storage_update_interval": "[%key:component::huawei_solar::config::step::setup_network::data::energy_storage_update_interval%]"
                 },
-                "title": "Device"
-            },
-            "setup_serial_manual_path": {
-                "data": {
-                    "port": "USB Device Path",
-                    "slave_ids": "Slave IDs: AUTO for auto-discovery, otherwise a comma separated list"
+                "data_description": {
+                    "baudrate": "Default is 9600"
                 },
-                "title": "Path"
+                "title": "Device"
             },
             "user": {
                 "data": {
